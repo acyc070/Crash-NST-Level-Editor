@@ -6,6 +6,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace NST
 {
+    /// DEEPSEEK ATTEMPT! IT WAS NOT WRITTEN BY HUMAN!
     /// <summary>
     /// Handles audio playback
     /// </summary>
@@ -70,11 +71,36 @@ namespace NST
             string mp3PathTmp = LocalStorage.GetStoragePath("audio.mp3");
             File.WriteAllBytes(rawPathTmp, audioBuffer);
 
-            using (MediaFoundationReader mediaFoundationReader = new MediaFoundationReader(rawPathTmp))
+            // --- PATCH: Use LameMP3FileWriter with filters disabled ---
+            using (var reader = new MediaFoundationReader(rawPathTmp))
             {
-                _duration = (float)mediaFoundationReader.TotalTime.TotalSeconds;
-                MediaFoundationEncoder.EncodeToMp3(mediaFoundationReader, mp3PathTmp, 320000);
+                _duration = (float)reader.TotalTime.TotalSeconds;
+
+                // Configure LAME encoder: disable low-pass and high-pass filters
+                var config = new LameConfig
+                {
+                    BitRate = 320,                 // 320 kbps as before
+                    LowPassFreq = -1,              // Disable low-pass filter
+                    HighPassFreq = -1,             // Disable high-pass filter
+                    OutputSampleRate = reader.WaveFormat.SampleRate, // Keep original sample rate
+                    Mode = reader.WaveFormat.Channels == 1 ? MPEGMode.Mono : MPEGMode.Stereo,
+                    VBR = VBRMode.Off,
+                    WriteVBRTag = false
+                };
+
+                using (var writer = new LameMP3FileWriter(mp3PathTmp, reader.WaveFormat, config))
+                {
+                    // Copy the decoded PCM data from reader to the MP3 writer
+                    byte[] buffer = new byte[reader.WaveFormat.AverageBytesPerSecond];
+                    int bytesRead;
+                    while ((bytesRead = reader.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        writer.Write(buffer, 0, bytesRead);
+                    }
+                    writer.Flush();
+                }
             }
+            // --- END PATCH ---
 
             _rawData = audioBuffer;
 
@@ -259,14 +285,18 @@ namespace NST
             var pcmFormat = new WaveFormat(48000, 16, channels);
             var pcmStream = new SampleToWaveProvider16(sampleProvider);
 
+            // --- PATCH: Disable filters in the replacement encoder as well ---
             var mp3Config = new LameConfig
             {
                 BitRate = 320,
                 OutputSampleRate = 48000,
                 Mode = channels == 1 ? MPEGMode.Mono : MPEGMode.Stereo,
                 VBR = VBRMode.Off,
-                WriteVBRTag = false
+                WriteVBRTag = false,
+                LowPassFreq = -1,    // Disable low-pass filter
+                HighPassFreq = -1    // Disable high-pass filter
             };
+            // --- END PATCH ---
 
             using var output = new MemoryStream();
             using var mp3Writer = new LameMP3FileWriter(output, pcmStream.WaveFormat, mp3Config);
