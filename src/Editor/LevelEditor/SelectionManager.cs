@@ -125,6 +125,8 @@ namespace NST
                 _selectionContainer.Quaternion.Copy(THREE.Quaternion.Identity());
                 _selectionContainer.Scale.Copy(THREE.Vector3.One());
 
+                _gizmos.startPos.Copy(_selectionContainer.Position);
+
                 if (obj is NSTSplineRotationKeyFrame && _gizmos.mode != "rotate")
                 {
                     _gizmos.mode = "rotate";
@@ -206,6 +208,8 @@ namespace NST
         {
             HashSet<NSTSpline> refreshSplines = [];
             HashSet<NSTObject> refreshedObjects = [];
+
+            _gizmos.startPos.Copy(_selectionContainer.Position);
 
             foreach (NSTObject obj in _selection)
             {
@@ -552,7 +556,7 @@ namespace NST
 
                     if (!copyToSameFile)
                     {
-                        newFile = _explorer.GetOrCreateExternalIgzFile(file.GetPath(), out dstFile, out dstIgz);
+                        newFile = _explorer.GetOrCreateExternalIgzFile(file.Path, out dstFile, out dstIgz);
                     }
                     
                     // Console.WriteLine($"Pasting ({entities.Count}) into {dstIgz.GetName()}: ({(copyToSameFile ? "same file" : "external file")})\n- " + string.Join("\n- ", _copyPaste.Select(x => x.Object)));

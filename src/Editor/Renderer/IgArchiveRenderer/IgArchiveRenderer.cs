@@ -45,7 +45,7 @@ namespace NST
 
         private void Setup()
         {
-            foreach (var file in Archive.GetFiles())
+            foreach (var file in Archive.Files)
             {
                 NamespaceUtils.AddInfos(file.GetName(false));
             }
@@ -56,7 +56,7 @@ namespace NST
             
             IgArchiveFile? packageFile = Archive.FindPackageFile();
 
-            _hasBackup = !string.IsNullOrEmpty(Archive.GetPath()) && File.Exists(Archive.GetPath() + ".backup");
+            _hasBackup = !string.IsNullOrEmpty(Archive.Path) && File.Exists(Archive.Path + ".backup");
             _hasPackageFile = (packageFile != null);
             _rebuildPackageFile = _hasPackageFile;
             _includeInPackageFile.Clear();
@@ -65,7 +65,7 @@ namespace NST
 
             if (packageFile == null) return;
 
-            IsLevelArchive = packageFile.GetPath().Substring("packages/generated/".Length).StartsWith("maps/");
+            IsLevelArchive = packageFile.Path.Substring("packages/generated/".Length).StartsWith("maps/");
 
             if (packageFile.GetName() == "chunkInfos_pkg.igz")
             {
@@ -79,13 +79,11 @@ namespace NST
 
             List<string?> includedFiles = chunkInfo._required._data.Select(e => e._name).ToList();
 
-            foreach (IgArchiveFile file in Archive.GetFiles())
+            foreach (IgArchiveFile file in Archive.Files)
             {
                 if (file == packageFile) continue;
 
-                string filePath = file.GetPath().ToLower();
-
-                if (includedFiles.Remove(filePath))
+                if (includedFiles.Remove(file.Path.ToLowerInvariant()))
                 {
                     _includeInPackageFile.Add(file);
                 }
@@ -151,6 +149,7 @@ namespace NST
                 }
 
                 // Shortcuts
+                if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.O)) App.OnClickOpen(); // Open
                 if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.S)) TrySaveArchive(); // Save
                 if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.ModShift | ImGuiKey.S)) TrySaveArchive(saveAs: true); // Save as
                 if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.L)) TrySaveArchive(launchGame: true); // Save and run
@@ -178,7 +177,7 @@ namespace NST
                 }
                 if (ImGui.BeginMenu("File"))
                 {
-                    if (ImGui.MenuItem("Open", "Ctrl+O")) App.OnClickOpen(fromLevelEditor);
+                    if (ImGui.MenuItem($"Open {(fromLevelEditor ? "level" : "archive")}", "Ctrl+O")) App.OnClickOpen(fromLevelEditor);
                     App.RenderOpenRecent(fromLevelEditor: fromLevelEditor);
                     if (ImGui.MenuItem("Reload", "Ctrl+Shift+R")) TryReload(fromLevelEditor);
                     ImGui.Separator();
@@ -188,6 +187,8 @@ namespace NST
                         if (ImGui.MenuItem("Save", "Ctrl+S")) TrySaveArchive();
                         if (ImGui.MenuItem("Save as...", "Ctrl+Shift+S")) TrySaveArchive(saveAs: true);
                         if (_hasPackageFile && ImGui.MenuItem("Save and run", "Ctrl+L")) TrySaveArchive(launchGame: true);
+                        ImGui.Separator();
+                        if (ImGui.MenuItem("Remove unused files")) this.RemoveUnusedFiles();
                         if (ImGui.MenuItem("Compress and save")) TrySaveArchive(compress: true);
                     }
                     else
@@ -195,6 +196,8 @@ namespace NST
                         if (ImGui.MenuItem("Save", "Ctrl+S")) customSaveMethod(false, false, false);
                         if (ImGui.MenuItem("Save as...", "Ctrl+Shift+S")) customSaveMethod(true, false, false);
                         if (_hasPackageFile && ImGui.MenuItem("Save and run", "Ctrl+L")) customSaveMethod(false, true, false);
+                        ImGui.Separator();
+                        if (ImGui.MenuItem("Remove unused files")) this.RemoveUnusedFiles();
                         if (ImGui.MenuItem("Compress and save")) customSaveMethod(false, false, true);
                     }
 
@@ -205,6 +208,10 @@ namespace NST
                         if (fromLevelEditor && ImGui.MenuItem("Open level archive"))
                         {
                             App.OpenArchiveRenderer(this);
+                        }
+                        else if (!fromLevelEditor && ImGui.MenuItem("Extract all files"))
+                        {
+                            ExtractAllFiles(Archive.Files, true);
                         }
                         ImGui.Separator();
                         AudioPlayer.RenderAudioMenu();
@@ -226,7 +233,7 @@ namespace NST
 
                 if (ImGui.BeginMenu("Backup"))
                 {
-                    uint hash = NamespaceUtils.ComputeHash(Archive.GetPath());
+                    uint hash = NamespaceUtils.ComputeHash(Archive.Path);
                     string autoBackupPath = Path.Join(LocalStorage.AutoBackupPath, $"{hash}.pak");
                     bool hasAutoBackup = File.Exists(autoBackupPath);
 
@@ -313,7 +320,7 @@ namespace NST
             }
             else
             {
-                File.Copy(Archive.GetPath(), Archive.GetPath() + ".backup");
+                File.Copy(Archive.Path, Archive.Path + ".backup");
                 _hasBackup = true;
             }
         }
@@ -322,7 +329,7 @@ namespace NST
         {
             ModalRenderer.ShowDeleteModal("Are you sure you want to delete the archive's backup?", () =>
             {
-                File.Delete(Archive.GetPath() + ".backup");
+                File.Delete(Archive.Path + ".backup");
                 _hasBackup = false;
             });
         }
@@ -331,8 +338,8 @@ namespace NST
         {
             ModalRenderer.ShowDeleteModal("Are you sure you want to overwrite the archive's backup?", () =>
             {
-                File.Delete(Archive.GetPath() + ".backup");
-                File.Copy(Archive.GetPath(), Archive.GetPath() + ".backup");
+                File.Delete(Archive.Path + ".backup");
+                File.Copy(Archive.Path, Archive.Path + ".backup");
             });
         }
 
@@ -353,8 +360,8 @@ namespace NST
         private void RestoreBackup(bool fromLevelEditor, string? backupPath = null)
         {
             // Restore backup
-            backupPath ??= Archive.GetPath() + ".backup";
-            File.Copy(backupPath, Archive.GetPath(), true);
+            backupPath ??= Archive.Path + ".backup";
+            File.Copy(backupPath, Archive.Path, true);
 
             // Reload editor window
             Reload(fromLevelEditor);
@@ -384,7 +391,7 @@ namespace NST
         private void Reload(bool fromLevelEditor)
         {
             // Reset archive renderer
-            Archive = IgArchive.Open(Archive.GetPath());
+            Archive = IgArchive.Open(Archive.Path);
             IsUpdated = false;
             Setup();
 
@@ -434,6 +441,22 @@ namespace NST
             {
                 string msg = $"    [ No preview available for {(extension == ".igz" ? "this file" : extension + " files")} ]";
                 ImGui.TextColored(new Vector4(1, 0.7f, 0, 1), msg);
+
+                if (extension == ".pak")
+                {
+                    ImGuiUtils.VerticalSpacing(10);
+
+                    if (ImGui.Button("Extract archive"))
+                    {
+                        ExtractFile(_selectedFile);
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Extract all archives"))
+                    {
+                        List<IgArchiveFile> archives = Archive.Files.Where(f => f.GetName().EndsWith(".pak")).ToList();
+                        ExtractAllFiles(archives);
+                    }
+                }
             }
         }
 
@@ -692,7 +715,7 @@ namespace NST
             }
 
             // Check if overwriting a game file
-            if (!_hasBackup && Archive.FindCustomZoneInfoFile() == null && LocalStorage.GamePath != null && Archive.GetPath().StartsWith(LocalStorage.GamePath))
+            if (!_hasBackup && Archive.FindCustomZoneInfoFile() == null && LocalStorage.GamePath != null && Archive.Path.StartsWith(LocalStorage.GamePath))
             {
                 ModalRenderer.ShowConfirmationModal(
                     fromLevelEditor
@@ -714,7 +737,7 @@ namespace NST
         /// <param name="saveAs">If true will open the file saving explorer, otherwise will overwrite the current file</param>
         public void SaveArchive(bool saveAs = false, bool launchGame = false, bool compress = false, Action? preSaveCallback = null, Action? postSaveCallback = null)
         {
-            string? path = Archive.GetPath();
+            string? path = Archive.Path;
 
             if (!string.IsNullOrEmpty(path) && LocalStorage.IsFileLocked(path))
             {
@@ -733,7 +756,7 @@ namespace NST
                 {
                     if (obj.ObjectName != null && !objectNames.Add(obj.ObjectName))
                     {
-                        ModalRenderer.ShowMessageModal("Could not save the archive", $"Found duplicate object name: {obj.ObjectName}\nin {archiveFile.GetPath()}");
+                        ModalRenderer.ShowMessageModal("Could not save the archive", $"Found duplicate object name: {obj.ObjectName}\nin {archiveFile.Path}");
                         return;
                     }
                 }
@@ -793,12 +816,12 @@ namespace NST
                 // Rebuild package file if needed
                 if (_rebuildPackageFile)
                 {
-                    List<IgArchiveFile> includedFiles = Archive.GetFiles().Where(e => _includeInPackageFile.Contains(e)).ToList();
+                    List<IgArchiveFile> includedFiles = Archive.Files.Where(e => _includeInPackageFile.Contains(e)).ToList();
                     Archive.RebuildPackageFile(includedFiles, out IgArchiveFile? newPackageFile);
                     if (newPackageFile != null) _treeView.AddFile(newPackageFile);
                 }
 
-                if (launchGame && File.Exists(Archive.GetPath()))
+                if (launchGame && File.Exists(Archive.Path))
                 {
                     try
                     {
@@ -807,7 +830,7 @@ namespace NST
                         string backupDir = LocalStorage.AutoBackupPath;
                         string backupPath = Path.Join(backupDir, $"{hash}.pak");
                         Directory.CreateDirectory(backupDir);
-                        File.Copy(Archive.GetPath(), backupPath, true);
+                        File.Copy(Archive.Path, backupPath, true);
                         Console.WriteLine("Created backup: " + backupPath);
                     }
                     catch (Exception e)
@@ -869,7 +892,7 @@ namespace NST
 
             ModalRenderer.ShowRenameModal(file.GetName(), (newName) =>
             {
-                string originalPath = file.GetPath();
+                string originalPath = file.Path;
                 file.Rename(newName);
                 _treeView.RefreshFile(file);
 
@@ -896,13 +919,40 @@ namespace NST
         /// <summary>
         /// Extract and save the content of a file to disk
         /// </summary>
-        private void ExtractFile(IgArchiveFile file)
+        private static void ExtractFile(IgArchiveFile file)
         {
             string? filePath = FileExplorer.SaveFile(FileExplorer.EXT_ALL, file.GetName());
 
             if (filePath != null)
             {
                 file.Save(filePath);
+            }
+        }
+
+        /// <summary>
+        /// Extract and save the content of a selection of files to disk
+        /// </summary>
+        private static void ExtractAllFiles(List<IgArchiveFile> files, bool createSubFolders = false)
+        {
+            string? folderPath = FileExplorer.SelectFolder();
+
+            if (folderPath != null)
+            {
+                foreach (var file in files)
+                {
+                    string newPath = createSubFolders
+                        ? Path.Combine(folderPath, file.Path)
+                        : Path.Combine(folderPath, file.GetName());
+
+                    string? directory = Path.GetDirectoryName(newPath);
+
+                    if (createSubFolders && directory != null && !Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    file.Save(newPath);
+                }
             }
         }
 
@@ -975,7 +1025,7 @@ namespace NST
         {
             bool includeInPkg = _includeInPackageFile.Contains(file);
 
-            if (!file.GetPath().StartsWith("packages/") && ImGui.Checkbox("Include in package file", ref includeInPkg))
+            if (!file.Path.StartsWith("packages/") && ImGui.Checkbox("Include in package file", ref includeInPkg))
             {
                 IsUpdated = true;
 
@@ -1015,26 +1065,26 @@ namespace NST
 
             foreach (IgArchiveFile file in newFiles)
             {
-                bool addToPkg = !file.GetPath().StartsWith("maps/");
+                bool addToPkg = !file.Path.StartsWith("maps/");
 
                 // Skip any map file
-                if (excludeMapFiles && (file.GetPath().StartsWith("maps/") || file.GetName().StartsWith("StaticCollision_"))) continue;
+                if (excludeMapFiles && (file.Path.StartsWith("maps/") || file.GetName().StartsWith("StaticCollision_"))) continue;
 
                 // Fix black screen when importing C3 enemies to non-C3 levels
-                // if (file.GetPath().StartsWith("vfx/Crash1/Hub") || file.GetPath().StartsWith("vfx/Crash3/Hub")) continue;
+                // if (file.Path.StartsWith("vfx/Crash1/Hub") || file.Path.StartsWith("vfx/Crash3/Hub")) continue;
 
                 int n = 0;
-                if      (file.GetPath().StartsWith("vfx/Crash1/Hub")) n = 1;
-                else if (file.GetPath().StartsWith("vfx/Crash2/Hub") || _jetpackExternalDependencies.Contains(file.GetName())) n = 2;
-                else if (file.GetPath().StartsWith("vfx/Crash3/Hub")) n = 3;
+                if      (file.Path.StartsWith("vfx/Crash1/Hub")) n = 1;
+                else if (file.Path.StartsWith("vfx/Crash2/Hub") || _jetpackExternalDependencies.Contains(file.GetName())) n = 2;
+                else if (file.Path.StartsWith("vfx/Crash3/Hub")) n = 3;
 
                 if (n > 0 && Archive.FindFile($"ui_bank_c{n}_bank.igz") == null)
                 {
                     IgArchive externalArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, $"crash{n}.pak"));
 
-                    foreach (IgArchiveFile externalFile in externalArchive.GetFiles())
+                    foreach (IgArchiveFile externalFile in externalArchive.Files)
                     {
-                        if (externalFile.GetPath().StartsWith("sound") && Archive.FindFile(externalFile.GetName()) == null)
+                        if (externalFile.Path.StartsWith("sound") && Archive.FindFile(externalFile.GetName()) == null)
                         {
                             AddFile(externalFile.Clone(), true);
                         }
@@ -1052,7 +1102,7 @@ namespace NST
         /// </summary>
         public void AddFileWithDependencies(IgArchive sourceArchive, IgArchiveFile file, bool focus = false)
         {
-            bool addToPkg = !file.GetPath().StartsWith("maps/");
+            bool addToPkg = !file.Path.StartsWith("maps/");
             
             AddFile(file.Clone(), addToPkg, focus);
 
@@ -1068,7 +1118,7 @@ namespace NST
             for (int i = 0; i < added.Count; i++)
             {
                 IgArchiveFile newFile = added[i];
-                addToPkg = !newFile.GetPath().StartsWith("maps/");
+                addToPkg = !newFile.Path.StartsWith("maps/");
                 AddFile(newFile.Clone(), addToPkg);
             }
         }

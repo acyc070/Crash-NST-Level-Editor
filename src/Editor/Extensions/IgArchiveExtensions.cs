@@ -37,14 +37,14 @@ namespace NST
 
                 if (files.Count == 0)
                 {
-                    files = archive.GetFiles();
+                    files = archive.Files;
                 }
 
                 archive.AddFile(packageFile);
 
                 newPackageFile = packageFile;
 
-                Console.WriteLine("Created new package file: " + packageFile.GetPath());
+                Console.WriteLine("Created new package file: " + packageFile.Path);
             }
 
             IgzFile packageIgz = packageFile.ToIgzFile();
@@ -59,7 +59,7 @@ namespace NST
             {
                 if (file == packageFile) continue;
 
-                string filePath = file.GetPath().ToLower();
+                string filePath = file.Path.ToLowerInvariant();
 
                 ChunkFileInfoMetaField? chunk = existingFiles.Find(x => x._name == filePath);
 
@@ -154,9 +154,9 @@ namespace NST
             HashSet<string> visited = [];
             HashSet<string> behaviors = [];
 
-            foreach (IgArchiveFile f in destinationArchive.GetFiles())
+            foreach (IgArchiveFile f in destinationArchive.Files)
             {
-                visited.Add(f.GetPath());
+                visited.Add(f.Path);
             }
 
             var AddSourceFile = (IgArchiveFile file, string name) =>
@@ -169,9 +169,9 @@ namespace NST
                 value.Add(file);
             };
 
-            foreach (IgArchiveFile f in sourceArchive.GetFiles())
+            foreach (IgArchiveFile f in sourceArchive.Files)
             {
-                if (excludeMapFiles && (f.GetPath().StartsWith("maps/") || f.GetName().StartsWith("StaticCollision_"))) continue;
+                if (excludeMapFiles && (f.Path.StartsWith("maps/") || f.GetName().StartsWith("StaticCollision_"))) continue;
 
                 string originalName = f.GetName(false).ToLowerInvariant();
                 string name = originalName;
@@ -187,7 +187,7 @@ namespace NST
                 if (name != originalName)
                 {
                     AddSourceFile(f, name);
-                    behaviors.Add(f.GetPath().Replace(f.GetName(), ""));
+                    behaviors.Add(f.Path.Replace(f.GetName(), ""));
                 }
             }
 
@@ -199,11 +199,11 @@ namespace NST
                 {
                     files.Enqueue(dependency);
 
-                    string? dir = dependency.GetPath().Replace(dependency.GetName(), "");
+                    string? dir = dependency.Path.Replace(dependency.GetName(), "");
 
                     if (behaviors.Contains(dir))
                     {
-                        foreach (IgArchiveFile other in sourceArchive.GetFiles().Where(f => f.GetPath().StartsWith(dir) && !files.Contains(f)))
+                        foreach (IgArchiveFile other in sourceArchive.Files.Where(f => f.Path.StartsWith(dir) && !files.Contains(f)))
                         {
                             files.Enqueue(other);
                         }
@@ -226,14 +226,14 @@ namespace NST
             while (files.Count > 0)
             {
                 IgArchiveFile current = files.Dequeue();
-                string path = current.GetPath();
+                string path = current.Path;
 
                 if (!visited.Add(path)) continue;
 
                 string fileName = NamespaceUtils.GetFileName(path);
                 if (ctrToNst && (fileName.StartsWith("common_EndRaceRandomCamera_") || fileName.StartsWith("common_Race_Start_Event_Chain")))
                 {
-                    // Console.WriteLine("Exclude incompatible CTR file: " + current.GetPath());
+                    // Console.WriteLine("Exclude incompatible CTR file: " + current.Path);
                     continue;
                 }
 
@@ -256,7 +256,135 @@ namespace NST
 
             return added;
         }
-        
+
+        public static void RemoveUnusedFiles(this IgArchiveRenderer renderer)
+        {
+            Task.Run(() =>
+            {
+                HashSet<IgArchiveFile> visited = [];
+
+                if (renderer.Archive.FindPackageFile() is IgArchiveFile pkg) visited.Add(pkg);
+                if (renderer.Archive.FindCollisionFile(".igz") is IgArchiveFile colIgz) visited.Add(colIgz);
+                if (renderer.Archive.FindCollisionFile(".hkx") is IgArchiveFile colHkx) visited.Add(colHkx);
+
+                var SimplifyName = (string str) =>
+                {
+                    int idx = str.LastIndexOf('!');
+                    if (idx == -1 || idx >= str.Length - 1) return str;
+
+                    str = str.Substring(idx + 1);
+                    str = str.Replace("{", "").Replace("}", "");
+
+                    idx = str.IndexOf('`');
+
+                    if (idx != -1)
+                    {
+                        str = str.Substring(0, idx);
+                    }
+
+                    if (!str.EndsWith('_'))
+                    {
+                        str = str.Substring(0, str.Length - 1);
+                    }
+
+                    return str;
+                };
+
+                var FindDeps = (IEnumerable<IgArchiveFile> files) =>
+                {
+                    HashSet<string> strings = [];
+
+                    // Console.WriteLine("Visiting " + files.Count() + " files...");
+
+                    foreach (var file in files)
+                    {
+                        visited.Add(file);
+
+                        float progress = (float)visited.Count / renderer.Archive.Files.Count;
+                        ModalRenderer.ShowLoadingModal($"Scanning files... ({visited.Count}/{renderer.Archive.Files.Count})", progress);
+
+                        if (!file.IsIGZ() || file.Path.StartsWith("textures/")) continue;
+
+                        IgzFile igz = file.ToIgzFile();
+
+                        foreach (var d in igz.Dependencies)
+                        {
+                            strings.Add(d.path);
+                        }
+
+                        foreach (var objects in igz.Objects)
+                        {
+                            foreach (var str in objects.GetStrings(file.GameVersion))
+                            {
+                                strings.Add(str);
+                            }
+                        }
+                    }
+
+                    // Console.WriteLine("Added " + strings.Count + " strings.");
+
+                    return strings
+                        .Select(s => NamespaceUtils.GetFileName(s, false).ToLowerInvariant())
+                        .Where(s => !string.IsNullOrEmpty(s) && !s.Contains(' '))
+                        .ToHashSet();
+                };
+
+                var FindFiles = (HashSet<string> names) =>
+                {
+                    return renderer.Archive.Files.Where(f =>
+                    {
+                        if (visited.Contains(f)) return false;
+
+                        string fileName = f.GetName(false).ToLowerInvariant();
+
+                        if (fileName == "crash_death_behavior" || fileName == "coco_death_behavior") return true; // L300
+
+                        fileName = SimplifyName(fileName);
+
+                        return names.Any(n => 
+                            fileName == n                || 
+                            fileName == n + "_sub"       ||
+                            fileName == n + "_anims"     ||
+                            fileName == n + "_script"    ||
+                            fileName == n + "_behavior"  ||
+                            fileName == n + "_character" ||
+                            fileName == SimplifyName(n)  ||
+                            fileName.StartsWith(n + ",") ||
+                            fileName == n.Replace("statemachine", "_behavior") ||
+                            fileName == "ai" + n.Replace("statemachine", "_behavior") || // L333
+                            fileName == "shared" + n.Replace("statemachine", "_behavior") // L300
+                        );
+                    })
+                    .ToList();
+                };
+
+                var files = renderer.Archive.GetFiles(FileSearchParams.Map);
+
+                while (files.Any())
+                {
+                    var deps = FindDeps(files);
+                    files = FindFiles(deps);
+                }
+
+                int removedCount = 0;
+
+                foreach (var file in renderer.Archive.Files.OrderBy(f => f.Path))
+                {
+                    if (file.Path.StartsWith("update/")) continue;
+                    
+                    if (!visited.Contains(file))
+                    {
+                        removedCount++;
+                        renderer.RemoveFile(file);
+                        // Console.WriteLine("Removed " + file.Path);
+                    }
+                }
+
+                ModalRenderer.CloseLoadingModal();
+                ModalRenderer.ShowMessageModal("Success", $"Removed {removedCount} files");
+            });
+        }
+
         private record VertexData
         {
             public uint vertexSize { get; init; }
@@ -349,7 +477,7 @@ namespace NST
         public static void SafeSave(this IgArchive archive, string? filePath = null, bool updatePath = false, bool compress = false)
         {
             // File doesn't exist, no risk of concurrent read/write
-            if (!File.Exists(filePath ?? archive.GetPath()))
+            if (!File.Exists(filePath ?? archive.Path))
             {
                 archive.Save(filePath, updatePath, compress);
             }
@@ -363,7 +491,7 @@ namespace NST
 
         public static IgArchiveFile? FindCustomZoneInfoFile(this IgArchive archive)
         {
-            return archive.GetFiles().Find(e => e.GetPath().StartsWith("update/") && e.GetPath().EndsWith("_zoneinfo.igz"));
+            return archive.Files.Find(e => e.Path.StartsWith("update/") && e.Path.EndsWith("_zoneinfo.igz"));
         }
 
         public static void TryRunLevel(this IgArchive archive)
@@ -371,7 +499,7 @@ namespace NST
             try
             {
                 archive.RunLevel();
-                LocalStorage.AddRecentFile(archive.GetPath(), true);
+                LocalStorage.AddRecentFile(archive.Path, true);
             }
             catch (Exception e)
             {
@@ -393,7 +521,7 @@ namespace NST
             if (pkg == null) throw new Exception("The current archive is not a level.");
 
             // Find level path
-            int index = pkg.GetPath().IndexOf("maps/");
+            int index = pkg.Path.IndexOf("maps/");
             if (index == -1) throw new Exception("The current archive is not a level.");
 
             if (LocalStorage.IsFileLocked(Path.Join(LocalStorage.GamePath, "CrashBandicootNSaneTrilogy.exe")))
@@ -401,7 +529,7 @@ namespace NST
                 throw new Exception("The game is already running.");
             }
 
-            string levelPath = pkg.GetPath().Substring(index + 5);
+            string levelPath = pkg.Path.Substring(index + 5);
             levelPath = levelPath.Replace("_pkg.igz", "");                                // Crash1/L101_NSanityBeach/L101_NSanityBeach
 
             // Create required strings
@@ -417,11 +545,11 @@ namespace NST
 
             // Run original level
 
-            if (chunkInfosArchive.GetFiles().Any(f => f.GetPath() == zoneInfoPath))
+            if (chunkInfosArchive.Files.Any(f => f.Path == zoneInfoPath))
             {
                 Console.WriteLine("Running existing level...");
 
-                if (archive.GetPath() != archivePath)
+                if (archive.Path != archivePath)
                 {
                     Console.WriteLine("Archive path mismatch, saving level to: " + archivePath);
 
@@ -430,11 +558,11 @@ namespace NST
                         ModalRenderer.ShowConfirmationModal($"You're about to overwrite a game file and no backup has been found:\n\n{archivePath}", 
                         () => {
                             File.Copy(archivePath, archivePath + ".backup"); // Backup
-                            File.Copy(archive.GetPath(), archivePath, true); // Overwrite
+                            File.Copy(archive.Path, archivePath, true); // Overwrite
                             ModManager.LaunchLevel(levelIdentifier);
                         },
                         () => {
-                            File.Copy(archive.GetPath(), archivePath, true);
+                            File.Copy(archive.Path, archivePath, true);
                             ModManager.LaunchLevel(levelIdentifier);
                         },
                         "Backup first",
@@ -443,7 +571,7 @@ namespace NST
                     }
                     else
                     {
-                        File.Copy(archive.GetPath(), archivePath, true);
+                        File.Copy(archive.Path, archivePath, true);
                     }
                 }
                 else Console.WriteLine("Archive name is the same as the level name, nothing to do.");
@@ -460,7 +588,7 @@ namespace NST
                 ? IgArchive.Open(LocalStorage.UpdateFilePath)
                 : new IgArchive(LocalStorage.UpdateFilePath, GameVersion.NST);
                 
-            foreach (IgArchiveFile file in update.GetFiles().ToList())
+            foreach (IgArchiveFile file in update.Files.ToList())
             {
                 if (file.GetName(false).EndsWith("_zoneinfo"))
                 {
@@ -517,9 +645,9 @@ namespace NST
             chunkInfos._required._data.Add(new ChunkFileInfoMetaField() { _type = "igx_file", _name = zoneInfoPath});
             packageFile.SetData(packageIgz.Save());
 
-            foreach (IgArchiveFile file in archive.GetFiles().Where(f => f.GetPath().StartsWith("update/")))
+            foreach (IgArchiveFile file in archive.Files.Where(f => f.Path.StartsWith("update/")))
             {
-                string path = file.GetPath().Substring(7);
+                string path = file.Path.Substring(7);
 
                 if (update.FindFile(path, FileSearchType.Path) is IgArchiveFile previousFile)
                 {
@@ -530,7 +658,7 @@ namespace NST
                 update.AddFile(clone);
             }
 
-            if (update.FindFile(packageFile.GetPath(), FileSearchType.Path) is IgArchiveFile previousPackageFile)
+            if (update.FindFile(packageFile.Path, FileSearchType.Path) is IgArchiveFile previousPackageFile)
             {
                 update.RemoveFile(previousPackageFile);
             }
@@ -538,10 +666,10 @@ namespace NST
             update.AddFile(packageFile);
             update.SafeSave();
 
-            if (archive.GetPath() != archivePath)
+            if (archive.Path != archivePath)
             {
                 Console.WriteLine("Archive path mismatch, saving level to: " + archivePath);
-                File.Copy(archive.GetPath(), archivePath, true);
+                File.Copy(archive.Path, archivePath, true);
             }
             else Console.WriteLine("Archive name is the same as the level name, nothing to do.");
 
