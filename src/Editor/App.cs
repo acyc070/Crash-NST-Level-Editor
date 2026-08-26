@@ -79,12 +79,39 @@ namespace NST
                 if (ImGui.MenuItem("New mod")) OnClickNew();
                 if (ImGui.MenuItem("Open archive")) OnClickOpen();
                 RenderOpenRecent(true);
+
                 ImGui.Separator();
+
                 if (ImGui.MenuItem("Play custom level")) OnClickPlayCustom();
                 if (ImGui.MenuItem("Open level editor")) OnClickOpen(true);
                 RenderOpenRecent(true, true);
+
                 ImGui.Separator();
+
+                string gameTooltip = !string.IsNullOrEmpty(LocalStorage.GamePath)
+                    ? Path.Join(LocalStorage.GamePath, "CrashBandicootNSaneTrilogy.exe")
+                    : "(Not set)";
+
+                string steamTooltip = !string.IsNullOrEmpty(LocalStorage.SteamExe)
+                    ? LocalStorage.SteamExe
+                    : "(Not set)";
+
                 if (ImGui.MenuItem("Set game path")) LocalStorage.SetNewGamePath();
+                ImGui.SetItemTooltip(gameTooltip);
+
+                if (ImGui.MenuItem("Set steam path")) LocalStorage.SetNewSteamPath();
+                ImGui.SetItemTooltip(steamTooltip);
+
+                bool steamNotFound = string.IsNullOrEmpty(LocalStorage.SteamExe);
+                if (steamNotFound) ImGui.BeginDisabled();
+                if (ImGui.MenuItem("Skip steam popup", null, LocalStorage.SkipSteamPopup))
+                {
+                    LocalStorage.SkipSteamPopup = !LocalStorage.SkipSteamPopup;
+                    LocalStorage.Set("skip_steam_popup", LocalStorage.SkipSteamPopup);
+                }
+                if (steamNotFound) ImGui.EndDisabled();
+                if (steamNotFound) ImGui.SetItemTooltip("You must set the path to steam.exe first");
+
                 // if (ImGui.MenuItem("ImGui Demo")) _showDemo = !_showDemo;
                 if (ImGui.MenuItem("Exit")) Environment.Exit(0);
                 ImGui.EndMenu();
@@ -120,7 +147,7 @@ namespace NST
 
                 foreach (string path in recent.ToList())
                 {
-                    if (ImGui.MenuItem(Path.GetFileName(path)))
+                    if (ImGui.MenuItem(NamespaceUtils.GetFileName(path)))
                     {
                         try
                         {
@@ -343,7 +370,7 @@ namespace NST
 
             try 
             {
-                return AlchemyUtils.FindFileInArchives(Path.GetFileNameWithoutExtension(name), out archive);
+                return AlchemyUtils.FindFileInArchives(NamespaceUtils.GetFileName(name, false), out archive);
             }
             catch (Exception e)
             {

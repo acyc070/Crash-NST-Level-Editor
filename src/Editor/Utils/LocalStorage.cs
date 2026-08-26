@@ -1,3 +1,4 @@
+using Alchemy;
 using System.Text.Json;
 
 namespace NST
@@ -15,12 +16,15 @@ namespace NST
         public static List<string> RecentLevels { get; private set; } = []; // List of recently opened levels
         
         public static string? GamePath { get; private set; } = null; // Path to the game folder
+        public static string? SteamExe { get; private set; } = null; // Path to the Steam executable
         public static string ArchivePath => Path.Join(GamePath ?? DEFAULT_GAME_PATH, "archives"); // Path to the archives folder
         public static string UpdateFilePath => Path.Join(ArchivePath, "update.pak"); // Path to the update file
         public static string AutoBackupPath => GetStoragePath("backups");
 
         private static string _storageFilePath = ""; // Path to the main local storage file
         public static string AutoBackupSize { get; private set; } = "";
+
+        public static bool SkipSteamPopup { get; set; } = false;
 
         /// <summary>
         /// Initialize the local storage.
@@ -53,6 +57,15 @@ namespace NST
                 GamePath = null;
                 Remove("game_path");
             }
+
+            if (GamePath != null)
+            {
+                SkipSteamPopup = Get("skip_steam_popup", false);
+            }
+
+            SteamExe = Get<string>("steam_exe");
+
+            UpdateSteamPath();
 
             // Compute the size of the auto-backup folder
             if (Directory.Exists(AutoBackupPath))
@@ -147,16 +160,46 @@ namespace NST
 
             if (paths.Count > 0)
             {
-                string? folder = Path.GetDirectoryName(paths[0]);
+                string? folder = NamespaceUtils.GetDirectoryName(paths[0]);
 
                 if (folder != null)
                 {
                     SetGamePath(folder);
+                    UpdateSteamPath();
                 }
                 else
                 {
                     ModalRenderer.ShowMessageModal("An error occurred", "Could not set the game path.");
                 }
+            }
+        }
+
+        public static void SetNewSteamPath()
+        {
+            List<string> paths = FileExplorer.OpenFiles(FileExplorer.EXT_EXECUTABLE, false, DEFAULT_GAME_PATH);
+
+            if (paths.Count > 0)
+            {
+                SetSteamPath(paths[0]);
+            }
+        }
+
+        private static void UpdateSteamPath()
+        {
+            if (string.IsNullOrEmpty(SteamExe))
+            {
+                if (GamePath?.Contains("Steam") == true)
+                {
+                    int idx = GamePath.LastIndexOf("Steam") + 5;
+                    string steamPath = Path.Join(GamePath.Substring(0, idx), "steam.exe");
+                    SetSteamPath(steamPath);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(SteamExe) && !File.Exists(SteamExe))
+            {
+                SteamExe = null;
+                Remove("steam_exe");
             }
         }
 
@@ -167,8 +210,12 @@ namespace NST
         {
             GamePath = path;
             Set("game_path", path);
+        }
 
-            Console.WriteLine($"Game folder set to {path}");
+        private static void SetSteamPath(string path)
+        {
+            SteamExe = path;
+            Set("steam_exe", path);
         }
 
         /// <summary>

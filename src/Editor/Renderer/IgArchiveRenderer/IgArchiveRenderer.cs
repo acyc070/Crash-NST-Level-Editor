@@ -244,21 +244,22 @@ namespace NST
                     }
                     else
                     {
-                        ImGui.MenuItem("Backup found!", null, false, false);
                         if (hasAutoBackup)
                         {
                             FileInfo fileInfo = new FileInfo(autoBackupPath);
                             string formatted = fileInfo.LastWriteTime.ToString("dd/MM HH:mm");
+                            ImGui.MenuItem("Auto backup (Ctrl+L)", null, false, false);
                             if (ImGui.MenuItem($"Restore auto backup ({formatted})")) TryRestoreBackup(fromLevelEditor, autoBackupPath);
                             ImGui.Separator();
                         }
+                        ImGui.MenuItem($"Manual backup (.backup)", null, false, false);
                         if (!_hasBackup && ImGui.MenuItem("Create backup")) CreateBackup();
                         if (_hasBackup && ImGui.MenuItem("Restore backup")) TryRestoreBackup(fromLevelEditor);
                         if (_hasBackup && ImGui.MenuItem("Overwrite backup")) OverwriteBackup();
                         if (_hasBackup && ImGui.MenuItem("Delete backup")) DeleteBackup();
+                        ImGui.Separator();
                         if (!string.IsNullOrEmpty(LocalStorage.AutoBackupSize))
                         {
-                            ImGui.Separator();
                             if (ImGui.MenuItem("Clear auto-backup folder", LocalStorage.AutoBackupSize))
                             {
                                 ModalRenderer.ShowDeleteModal(
@@ -420,7 +421,7 @@ namespace NST
                 return;
             }
 
-            string extension = Path.GetExtension(_selectedFile.GetName());
+            string extension = NamespaceUtils.GetExtension(_selectedFile.GetName());
 
             ImGui.TableNextColumn();
             ImGui.Text(_selectedFile.GetName());
@@ -944,7 +945,7 @@ namespace NST
                         ? Path.Combine(folderPath, file.Path)
                         : Path.Combine(folderPath, file.GetName());
 
-                    string? directory = Path.GetDirectoryName(newPath);
+                    string? directory = NamespaceUtils.GetDirectoryName(newPath);
 
                     if (createSubFolders && directory != null && !Directory.Exists(directory))
                     {
@@ -1025,7 +1026,7 @@ namespace NST
         {
             bool includeInPkg = _includeInPackageFile.Contains(file);
 
-            if (!file.Path.StartsWith("packages/") && ImGui.Checkbox("Include in package file", ref includeInPkg))
+            if (_hasPackageFile && !file.Path.StartsWith("packages/") && ImGui.Checkbox("Include in package file", ref includeInPkg))
             {
                 IsUpdated = true;
 
