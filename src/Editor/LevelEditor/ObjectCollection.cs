@@ -2,7 +2,6 @@ using Alchemy;
 using ImGuiNET;
 using System.Numerics;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
 
@@ -10,7 +9,7 @@ namespace NST
 {
     public static class ObjectCollection
     {
-        private struct CollectionEntry(string archiveName, string fileName, string objectName, string objectType, string displayName, string modelName, string type, bool prefab, bool collisions)
+        public struct CollectionEntry(string key, string archiveName, string fileName, string objectName, string objectType, string displayName, string modelName, string type, bool prefab, bool collisions)
         {
             public string? ArchivePath { get; set; } = null;
             public string ArchiveName { get; set; } = archiveName;
@@ -22,7 +21,8 @@ namespace NST
             public string Type { get; set; } = type;
             public bool IsPrefab { get; set; } = prefab;
             public bool HasCollisions { get; set; } = collisions;
-            [JsonIgnore] public readonly string Key => $"{ModelName}_{DisplayName}_{ObjectType}".ToLowerInvariant();
+            public readonly string Key => _key ?? $"{ModelName}_{DisplayName}_{ObjectType}".ToLowerInvariant();
+            private readonly string? _key = key;
         }
 
         private const int RENDER_SIZE = 256;
@@ -116,14 +116,14 @@ namespace NST
                         foreach (igEntity entity in igz.FindObjects<igEntity>())
                         {
                             bool staticObject = entity.GetType() == typeof(igEntity);
-                            if ((entity._bitfield._isArchetype || !entity._bitfield._canSpawn) && !staticObject) continue;
+                            if (!entity._bitfield._canSpawn || entity._bitfield._isArchetype && !staticObject) continue;
                             if (entity.ObjectName!.StartsWith("Crate_") || entity.TryGetComponent(out common_Crate_StackCheckerData? _)) continue;
 
-                            string key;
-                            string modelName;
+                            string key = "";
                             string type = "Scenery";
                             string objectType = entity.GetType().Name;
-                            string displayName = GetDisplayName(igz, entity);
+                            string displayName = entity.ObjectName;
+                            string modelName;
 
                             bool isPrefab = entity.TryGetComponent(out igPrefabComponentData? prefabComponent);
                             bool hasCollisions = false;
@@ -135,8 +135,6 @@ namespace NST
 
                                 Dictionary<THREE.Matrix4, string> prefabModels = [];
 
-                                var parentTransform = entity.GetTransformMatrix();
-
                                 foreach (var child in prefabChildren)
                                 {
                                     if (!child._bitfield._canSpawn) continue;
@@ -147,33 +145,19 @@ namespace NST
                                     string childModelName = NamespaceUtils.GetFileName(childModelPath, false);
                                     var childTransform = child.GetTransformMatrix();
                                     
+                                    key += childModelName;
+
                                     prefabModels.Add(childTransform, childModelName);
 
                                     if (compoundShape == null || hasCollisions) continue;
 
-                                    var worldTransform = parentTransform * childTransform;
-
-                                    THREE.Vector3 childPosition = new THREE.Vector3();
-                                    worldTransform.Decompose(childPosition, new THREE.Quaternion(), new THREE.Vector3());
-
-                                    foreach (var shape in compoundShape._elements.GetElements())
-                                    {
-                                        THREE.Vector3 havokPosition = new THREE.Vector3(shape._transform.M41, shape._transform.M42, shape._transform.M43);
-                                        float distance = havokPosition.DistanceTo(childPosition * 0.0254f);
-                                        if (distance < 0.01f)
-                                        {
-                                            hasCollisions = true;
-                                            break;
-                                        }
-                                    }
+                                    hasCollisions = StaticCollisionsUtils.FindPrefabCollision(entity, child, compoundShape) != null;
                                 }
 
                                 if (prefabModels.Count == 0) continue;
-
-                                modelName = $"Prefab_{displayName}";
-                                key = $"{modelName}_{displayName}_{objectType}".ToLowerInvariant();
-                                
                                 if (entities.ContainsKey(key)) continue;
+
+                                modelName = $"Prefab_{fileName}_{displayName}";
 
                                 if (prefabChildren.Any(e => e.GetType() != typeof(igEntity)))
                                 {
@@ -191,6 +175,7 @@ namespace NST
                                 string? modelPath = entity.GetModelName(igz, archive: archive);
                                 if (modelPath == null) continue;
 
+                                displayName = GetDisplayName(igz, entity);
                                 modelName = NamespaceUtils.GetFileName(modelPath, false);
 
                                 if (staticObject)
@@ -221,7 +206,7 @@ namespace NST
                                 }
                             }
 
-                            CollectionEntry entry = new(archiveName, fileName, entity.ObjectName, objectType, displayName, modelName, type, isPrefab, hasCollisions);
+                            CollectionEntry entry = new(key, archiveName, fileName, entity.ObjectName, objectType, displayName, modelName, type, isPrefab, hasCollisions);
 
                             if (customFolder)
                             {
@@ -666,7 +651,7 @@ namespace NST
                             ModalRenderer.ShowLoadingModal($"Importing {e.DisplayName}...");
                             ObjectFactory.TryAddObject(() =>
                             {
-                                ObjectFactory.AddGeneric(e.FileName, e.ObjectName, e.Type, explorer, null, e.DisplayName, 800, true, e.ArchivePath);
+                                ObjectFactory.AddGenericCollection(e, explorer);
                             });
                             ModalRenderer.CloseLoadingModal();
                         });
@@ -742,7 +727,7 @@ namespace NST
                             if (ImGui.IsItemHovered())
                             {
                                 ImGui.BeginTooltip();
-                                ImGui.Text(e.DisplayName);
+                                RenderName(e, false);
                                 ImGui.Image(textureId, new Vector2(RENDER_SIZE, RENDER_SIZE), Vector2.Zero, Vector2.One, Vector4.One);
                                 ImGui.EndTooltip();
                             }
@@ -764,19 +749,7 @@ namespace NST
                         ImGui.SameLine();
                     }
 
-                    ImGui.Text(e.DisplayName);
-
-                    if (e.IsPrefab)
-                    {
-                        ImGui.SameLine();
-                        ImGui.TextDisabled("[Prefab]");
-                    }
-
-                    if (e.HasCollisions && e.Type == "Scenery")
-                    {
-                        ImGui.SameLine();
-                        ImGui.TextDisabled("[Collision]");
-                    }
+                    RenderName(e);
 
                     if (_settings.showFileName) ImGui.TextDisabled(e.FileName);
 
@@ -790,6 +763,24 @@ namespace NST
             }
 
             clipper.Destroy();
+        }
+
+        private static void RenderName(CollectionEntry e, bool singleLine = true)
+        {
+            ImGui.Text(e.DisplayName);
+
+            if (e.IsPrefab)
+            {
+                if (singleLine) ImGui.SameLine();
+                ImGui.TextDisabled("[Prefab]");
+                singleLine = true;
+            }
+
+            if (e.HasCollisions && e.Type == "Scenery")
+            {
+                if (singleLine) ImGui.SameLine();
+                ImGui.TextDisabled("[Collision]");
+            }
         }
 
         private static void LoadSettings()

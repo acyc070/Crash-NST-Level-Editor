@@ -905,11 +905,13 @@ namespace NST
 
                     var previousPosition = prefabChild.Object._parentSpacePosition;
                     var previousName = prefabChild.Object.ObjectName;
+                    var previousArchetype = prefabChild.Object._bitfield._isArchetype;
 
                     prefabComponentData.Remove(prefabChild.Object);
 
                     prefabChild.Object.ObjectName = $"_FakePrefab_{parentPrefab.Object.ObjectName}___{prefabChild.Object.ObjectName}";
                     prefabChild.Object._parentSpacePosition = worldPos.ToVec3MetaField();
+                    prefabChild.Object._bitfield._isArchetype = false;
                     prefabChild.ParentPrefabInstance = null;
 
                     postSaveCallbacks.Add(() =>
@@ -918,6 +920,7 @@ namespace NST
 
                         prefabChild.Object.ObjectName = previousName;
                         prefabChild.Object._parentSpacePosition = previousPosition;
+                        prefabChild.Object._bitfield._isArchetype = previousArchetype;
                         prefabChild.ParentPrefabInstance = parentPrefab;
                     });
                 }

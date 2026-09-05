@@ -518,18 +518,24 @@ namespace NST
                 }
                 else
                 {
-                    if (!CheckHub(archive, out List<string> subLevelPaths))
+                    Task.Run(() => 
                     {
-                        return;
-                    }
+                        if (!CheckHub(archive, out List<string> subLevelPaths))
+                        {
+                            return;
+                        }
 
-                    archive.RunLevel(subLevelPaths);
-                    LocalStorage.AddRecentFile(archive.Path, true);
+                        archive.RunLevel(subLevelPaths);
+                        
+                        LocalStorage.AddRecentFile(archive.Path, true);
+                        ModalRenderer.CloseLoadingModal();
+                    });
                 }
             }
             catch (Exception e)
             {
                 Console.WriteLine($"Error while launching the game: {e.Message}\n{e.StackTrace}");
+                ModalRenderer.CloseLoadingModal();
                 ModalRenderer.ShowMessageModal("Could not launch the level", e.Message);
             }
         }
@@ -548,6 +554,8 @@ namespace NST
             {
                 return true;
             }
+
+            ModalRenderer.ShowLoadingModal("Loading modpack...");
 
             List<string> missingLevels = [];
             List<IgArchiveFile> mapFiles = archive.GetFiles(FileSearchParams.MapIgz);
@@ -585,6 +593,7 @@ namespace NST
                     str += $"\n- {level}.pak";
                 }
                 str += $"\n\nPlace them in \"{LocalStorage.ArchivePath}\"";
+                ModalRenderer.CloseLoadingModal();
                 ModalRenderer.ShowMessageModal("Incomplete modpack", str);
                 return false;
             }
@@ -789,6 +798,13 @@ namespace NST
 
             foreach (string subLevelPath in subLevelPaths)
             {
+                string name = NamespaceUtils.GetFileName(subLevelPath, false) + "_zoneinfo.igz";
+
+                if (chunkInfos._required._data.Any(e => e._name?.EndsWith(name, StringComparison.InvariantCultureIgnoreCase) == true))
+                {
+                    continue;
+                }
+
                 IgArchive levelArchive = IgArchive.Open(subLevelPath);
                 IgArchiveFile? levelZoneInfo = levelArchive.FindCustomZoneInfoFile();
                 if (levelZoneInfo == null) continue;

@@ -620,7 +620,7 @@ namespace NST
         {
             if (templateArchive == null || templateFile == null || templateIgz ==  null)
             {
-                templateArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "Crash_Crates.pak"));
+                templateArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "Crash_Crates.pak"));
                 templateFile = templateArchive.FindFile("Crash_Crates.igz")!;
                 templateIgz = templateFile.ToIgzFile();
                 templateIgz.FindObject<CEntityHandleList>("Crate_Switch_entityData_componentData_CommonCrateSwitchIron_OulinedCrates")!._data.Clear();
@@ -748,7 +748,7 @@ namespace NST
         {
             SetupTemplateArchive();
 
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L220_BeeHaving_Crates.igz")!.ToIgzFile();
 
             CEntity crate = sourceIgz.FindObject<CEntity>("Crate_Nitro_Flying")!;
@@ -858,7 +858,7 @@ namespace NST
             if (!_splineCameraPaths.TryGetValue(type, out var splinePath)) return;
 
             string archiveName = ExtractArchiveName(splinePath.fileName);
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, archiveName + ".pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
             IgArchiveFile sourceFile = sourceArchive.FindFile(splinePath.fileName + ".igz")!;
             IgzFile sourceIgz = sourceFile.ToIgzFile();
 
@@ -918,7 +918,7 @@ namespace NST
 
         private static void AddStackCamera(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L305_MakinWaves.igz")!.ToIgzFile();
 
             CStackCamera stackCamera = sourceIgz.FindObject<CStackCamera>()!;
@@ -931,7 +931,7 @@ namespace NST
 
         private static void AddLevelEntrance(LevelExplorer explorer, string floor, string level)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L200_Hub.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L200_Hub.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile($"L200_Hub_{floor}.igz")!.ToIgzFile();
             IgzFile sourceIgzFrame = sourceArchive.FindFile($"L200_Hub_Floor01.igz")!.ToIgzFile();
 
@@ -953,7 +953,7 @@ namespace NST
 
         private static void AddCannonBall(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L305_MakinWaves.igz")!.ToIgzFile();
 
             CGameEntity cannonBall = sourceIgz.FindObject<CGameEntity>("Jetski_Hazard_Cannonball_Spawned_gen")!;
@@ -990,7 +990,7 @@ namespace NST
 
         private static void AddCameraTrigger(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L201_TurtleWoods.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L201_TurtleWoods.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L201_TurtleWoods_Hazards.igz")!.ToIgzFile();
 
             var trigger = sourceIgz.FindObject<CScriptTriggerEntity>("MousePit_CameraTrigger00")!;
@@ -1008,7 +1008,7 @@ namespace NST
 
         private static void AddCDynamicClipEntity(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L301_ToadVillage.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L301_ToadVillage.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L301_ToadVillage_Crates.igz")!.ToIgzFile();
 
             CDynamicClipEntity clip = sourceIgz.FindObject<CDynamicClipEntity>()!;
@@ -1071,7 +1071,7 @@ namespace NST
 
         private static void AddWarpTeleporter(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
             IgArchiveFile sourceFile = sourceArchive.FindFile("L220_BeeHaving_BonusArea.igz")!;
             IgzFile sourceIgz = sourceFile.ToIgzFile();
 
@@ -1090,7 +1090,7 @@ namespace NST
 
         private static void AddTRex(LevelExplorer explorer, bool dismount)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L332_EggipusRex.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L332_EggipusRex.pak"));
             IgzFile mainIgz = sourceArchive.FindFile("L332_EggipusRex.igz")!.ToIgzFile();
 
             explorer.GetOrCreateIgzFile("TRex", out IgArchiveFile newFile, out IgzFile newIgz);
@@ -1157,7 +1157,7 @@ namespace NST
             {
                 (string archiveName, string fileName) = _bonusFiles[type];
 
-                IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, archiveName + ".pak"));
+                IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
                 IgzFile sourceIgz = sourceArchive.FindFile(fileName + ".igz")!.ToIgzFile();
 
                 igEntity bonusPrefab = sourceIgz.FindObject<igEntity>($"BonusRound_{type}_prefab")!;
@@ -1193,27 +1193,6 @@ namespace NST
 
                 ModalRenderer.CloseLoadingModal();
             });
-        }
-
-        private static void AddGeneric(string archiveName, List<(string fileName, string objectName)> objectPaths, string identifier, LevelExplorer explorer, Action<List<NSTObject>>? callback = null)
-        {
-            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
-            
-            explorer.GetOrCreateIgzFile(identifier, out IgArchiveFile dstFile, out IgzFile dstIgz);
-
-            List<NSTObject> clones = [];
-
-            foreach ((string fileName, string objectName) in objectPaths)
-            {
-                IgzFile sourceIgz = sourceArchive.FindFile(fileName, FileSearchType.Name, FileSearchParams.MapIgz)!.ToIgzFile();
-                igObject obj = sourceIgz.FindObject<igObject>(objectName)!;
-
-                clones.AddRange(explorer.Clone([obj], sourceArchive, sourceIgz, dstFile, dstIgz, addToSelection: null, initializeObjects: true));
-            }
-
-            explorer.SelectAndMoveToCamera(clones.Where(c => c is not NSTEntity e || !e.IsTemplate).ToList(), 400);
-
-            callback?.Invoke(clones);
         }
 
         private static void AddGenericExternal(string archiveName, List<(string fileName, string objectName)> objectPaths, LevelExplorer explorer, List<string>? newObjectNames = null)
@@ -1259,6 +1238,86 @@ namespace NST
             var clones = explorer.Clone([obj], sourceArchive, sourceIgz, dstFile, dstIgz, addToSelection: addToSelection, initializeObjects: true, camDistance: camDistance);
 
             callback?.Invoke(clones);
+        }
+
+        public static void AddGenericCollection(ObjectCollection.CollectionEntry entry, LevelExplorer explorer)
+        {
+            string archivePath = entry.ArchivePath ?? Path.Combine(LocalStorage.ArchivePath, $"{entry.ArchiveName}.pak");
+
+            var sourceArchive = IgArchive.Open(archivePath);
+            var sourceFile = sourceArchive.FindFile(entry.FileName, FileSearchType.Name, FileSearchParams.MapIgz)!;
+            var sourceIgz = sourceFile.ToIgzFile();
+            var obj = sourceIgz.FindObject<igEntity>(entry.ObjectName)!;
+
+            Dictionary<igObject, igObject> clones = [];
+            string? originalName = obj.ObjectName;
+
+            obj.ObjectName = entry.DisplayName;
+            obj._bitfield._canSpawn = true;
+            obj._bitfield._isArchetype = false;
+            
+            explorer.GetOrCreateExternalIgzFile(sourceFile.Path, out IgArchiveFile dstFile, out IgzFile dstIgz);
+
+            var newObjects = explorer.Clone([obj], sourceArchive, sourceIgz, dstFile, dstIgz, addToSelection: true, initializeObjects: true, camDistance: 800, clones: clones);
+
+            // Setup collisions
+
+            if (!entry.HasCollisions) 
+                return;
+
+            var collisionHkx = sourceArchive.FindCollisionFile(".hkx")?.ToHavokFile();
+
+            if (collisionHkx?.GetAllObjects().Find(e => e is hknpStaticCompoundShape) is not hknpStaticCompoundShape compoundShape)
+                return;
+
+            var collisionsDict = StaticCollisionsUtils.GetCollisionData(sourceArchive);
+            var newEntities = newObjects.OfType<NSTEntity>().ToDictionary(e => e.Object, e => e);
+
+            obj.ObjectName = originalName;
+
+            foreach ((igObject src, igObject dst) in clones)
+            {
+                if (src is not igEntity srcEntity || dst is not igEntity dstEntity) continue;
+
+                // Prefab collisions
+                if (newEntities.TryGetValue(dstEntity, out NSTEntity? prefabEntity) &&
+                    srcEntity.TryGetComponent(out igPrefabComponentData? prefabComponent) && 
+                    prefabComponent._prefabEntities != null)
+                {
+                    foreach (var srcChild in prefabComponent._prefabEntities._data)
+                    {
+                        if (!clones.TryGetValue(srcChild, out igObject? dstChild)) continue;
+
+                        var nstEntity = prefabEntity.Children.OfType<NSTEntity>().FirstOrDefault(e => e.ParentPrefabInstance == prefabEntity && e.Object == dstChild);
+                        if (nstEntity == null) continue;
+
+                        var shape = StaticCollisionsUtils.FindPrefabCollision(srcEntity, srcChild, compoundShape);
+                        if (shape == null) continue;
+
+                        // Console.WriteLine($"Add collision for {src} => {dst.ObjectName} / {srcChild} => {dstChild} [prefab]");
+
+                        nstEntity.CollisionShapeIndex = int.MaxValue;
+                        explorer.ArchiveRenderer.SetEntityUpdated(nstEntity, shape);
+
+                        explorer.InstanceManager.FakePrefabChilds.Add(nstEntity);
+                    }
+                }
+                // Regular collisions
+                else
+                {
+                    var reference = src.ToNamedReference(sourceFile.GetName(false)).ToEXID();
+
+                    if (!collisionsDict.TryGetValue(reference, out int collisionId)) continue;
+                    if (!newEntities.TryGetValue(dstEntity, out NSTEntity? nstEntity)) continue;
+
+                    // Console.WriteLine($"Add collision for {src} => {dst.ObjectName} ({collisionId})");
+
+                    var shape = compoundShape._elements.GetElements()[collisionId];
+
+                    nstEntity.CollisionShapeIndex = int.MaxValue;
+                    explorer.ArchiveRenderer.SetEntityUpdated(nstEntity, shape);
+                }
+            }
         }
 
         private static void AddGenericTemplate(string name, string identifier, LevelExplorer explorer)
@@ -1332,10 +1391,10 @@ namespace NST
 
         private static void AddC2BonusRoundInternal(string archiveName, LevelExplorer explorer)
         {
-            var archive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, archiveName + ".pak"));
+            var archive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
             var collisionData = StaticCollisionsUtils.GetCollisionData(archive);
             var collisionFile = archive.FindCollisionFile(".hkx")!.ToHavokFile();
-            var compoundShape = (hknpCompoundShape)collisionFile.GetRootObjects().Find(e => e is hknpCompoundShape)!;
+            var compoundShape = (hknpStaticCompoundShape)collisionFile.GetRootObjects().Find(e => e is hknpStaticCompoundShape)!;
 
             (THREE.Vector3 center, THREE.Vector3 min, THREE.Vector3 max, bool isTeleport) = _bonusBounds[archiveName];
             THREE.Box3 bounds = new THREE.Box3(center + min, center + max);
@@ -1461,23 +1520,14 @@ namespace NST
                     {
                         if (!child.IsPrefabChild) continue;
 
-                        var entityPos = new THREE.Vector3();
-                        child.ObjectToWorld().Decompose(entityPos, new THREE.Quaternion(), new THREE.Vector3());
+                        var shape = StaticCollisionsUtils.FindPrefabCollision(e.Object, child.Object, compoundShape);
+                        if (shape == null) continue;
 
-                        for (int i = 0; i < compoundShape._elements.Count; i++)
-                        {
-                            var shape = compoundShape._elements[i];
-                            var havokPos = new THREE.Vector3(shape._transform.M41, shape._transform.M42, shape._transform.M43);
-                            float distance = havokPos.DistanceTo(entityPos * 0.0254f);
-                            
-                            if (distance < 0.01f)
-                            {
-                                child.CollisionShapeIndex = i;
-                                child.CollisionPrefabHash = collisionData.First(e => e.Value == i).Key.objectHash;
-                                explorer.ArchiveRenderer.SetEntityUpdated(child, shape);
-                                break;
-                            }
-                        }
+                        int index = compoundShape._elements.IndexOf(shape);
+                        child.CollisionPrefabHash = collisionData.First(e => e.Value == index).Key.objectHash;
+                        child.CollisionShapeIndex = index;
+
+                        explorer.ArchiveRenderer.SetEntityUpdated(child, shape);
                     }
                 }
             }
