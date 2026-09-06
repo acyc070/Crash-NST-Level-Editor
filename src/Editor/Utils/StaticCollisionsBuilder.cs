@@ -48,6 +48,28 @@ namespace NST
             return collisionData;
         }
 
+        public static hknpShapeInstance? FindPrefabCollision(igEntity parentPrefab, igEntity child, hknpStaticCompoundShape compoundShape)
+        {
+            var transform = parentPrefab.GetTransformMatrix() * child.GetTransformMatrix();
+
+            var position = new THREE.Vector3();
+            transform.Decompose(position, new(), new());
+
+            foreach (var shape in compoundShape._elements.GetElements())
+            {
+                var havokPosition = new THREE.Vector3(shape._transform.M41, shape._transform.M42, shape._transform.M43);
+
+                float distance = havokPosition.DistanceTo(position * 0.0254f);
+
+                if (distance < 0.01f)
+                {
+                    return shape;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Rebuild static collisions for an archive, more specifically
         /// the StaticCollision.igz and StaticCollision.hkx files.
@@ -162,19 +184,24 @@ namespace NST
 
             if (compoundShape._boundingVolumeData != null)
             {
-                // Rebuild BVH tree
-                BVHNode root = BVHBuilder.Build(compoundShape._elements.GetElements());
-                List<hkcdStaticTreeCodec3Axis6> axis6Tree = root.BuildAxis6Tree(compoundShape._elements.GetElements());
-
                 compoundShape._boundingVolumeData._nodes.Clear();
-                compoundShape._boundingVolumeData._nodes.AddRange(axis6Tree);
-                compoundShape._boundingVolumeData._min = new System.Numerics.Vector4(root.boundsMin.X, root.boundsMin.Y, root.boundsMin.Z, compoundShape._boundingVolumeData._min.W);
-                compoundShape._boundingVolumeData._max = new System.Numerics.Vector4(root.boundsMax.X, root.boundsMax.Y, root.boundsMax.Z, compoundShape._boundingVolumeData._max.W);
-            
-                // Update bounds
-                compoundShape._min = new System.Numerics.Vector4(root.boundsMin.X, root.boundsMin.Y, root.boundsMin.Z, compoundShape._min.W);
-                compoundShape._max = new System.Numerics.Vector4(root.boundsMax.X, root.boundsMax.Y, root.boundsMax.Z, compoundShape._max.W);
-                compoundShape._numShapeKeyBits = (byte)Math.Max(1, 32 - System.Numerics.BitOperations.LeadingZeroCount((uint)compoundShape._elements.Count-1));
+
+                if (compoundShape._elements.Count > 0)
+                {
+                    // Rebuild BVH tree
+                    BVHNode root = BVHBuilder.Build(compoundShape._elements.GetElements());
+                    List<hkcdStaticTreeCodec3Axis6> axis6Tree = root.BuildAxis6Tree(compoundShape._elements.GetElements());
+
+                    compoundShape._boundingVolumeData._nodes.Clear();
+                    compoundShape._boundingVolumeData._nodes.AddRange(axis6Tree);
+                    compoundShape._boundingVolumeData._min = new System.Numerics.Vector4(root.boundsMin.X, root.boundsMin.Y, root.boundsMin.Z, compoundShape._boundingVolumeData._min.W);
+                    compoundShape._boundingVolumeData._max = new System.Numerics.Vector4(root.boundsMax.X, root.boundsMax.Y, root.boundsMax.Z, compoundShape._boundingVolumeData._max.W);
+                
+                    // Update bounds
+                    compoundShape._min = new System.Numerics.Vector4(root.boundsMin.X, root.boundsMin.Y, root.boundsMin.Z, compoundShape._min.W);
+                    compoundShape._max = new System.Numerics.Vector4(root.boundsMax.X, root.boundsMax.Y, root.boundsMax.Z, compoundShape._max.W);
+                    compoundShape._numShapeKeyBits = (byte)Math.Max(1, 32 - System.Numerics.BitOperations.LeadingZeroCount((uint)compoundShape._elements.Count-1));
+                }
             }
 
             collisionHkxFile.SetData(collisionHkx.Save());

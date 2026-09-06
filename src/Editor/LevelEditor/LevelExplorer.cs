@@ -126,6 +126,7 @@ namespace NST
             {"Jetpack", "jetpack"},
             {"Boulder", "boulder"},
             {"Digging", "dig"},
+            {"Hub", "hub"}
         };
         
         public string GetWindowName() => (ArchiveRenderer?.Archive.GetName(false) ?? "Creating new level...") + "##" + GetHashCode();
@@ -138,7 +139,7 @@ namespace NST
         {
             Init();
 
-            _initializationTask = Task.Run(() => 
+            _initializationTask = CrashHandler.TryRunTask("loading scene", () => 
             {
                 IgArchive archive = LevelBuilder.CreateLevel(baseLevel, level, musicLevel, crashMode, _progressManager);
 
@@ -148,20 +149,8 @@ namespace NST
                 ArchiveRenderer.IsOpen = false;
 
                 LoadEntities();
-            })
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
-                {
-                    foreach (var ex in t.Exception.InnerExceptions)
-                    {
-                        CrashHandler.Log($"Error loading entities: {ex.Message}\n{ex.StackTrace}");
-                    }
-                    string logPath = CrashHandler.WriteLogsToFile();
-                    ModalRenderer.ShowMessageModal("Error", $"An error occured while loading the scene\n\nLog file: {logPath}");
-                    IsOpen = false;
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);        
+            },
+            () => IsOpen = false);       
         }
 
         /// <summary>
@@ -173,7 +162,7 @@ namespace NST
 
             Init();
 
-            _initializationTask = Task.Run(() => 
+            _initializationTask = CrashHandler.TryRunTask("loading scene", () => 
             {
                 LoadEntities();
 
@@ -187,20 +176,8 @@ namespace NST
                 {
                     Focus(objToFocus);
                 }
-            })
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
-                {
-                    foreach (var ex in t.Exception.InnerExceptions)
-                    {
-                        CrashHandler.Log($"Error loading entities: {ex.Message}\n{ex.StackTrace}");
-                    }
-                    string logPath = CrashHandler.WriteLogsToFile();
-                    ModalRenderer.ShowMessageModal("Error", $"An error occured while loading the scene. Log saved to:\n\n{logPath}");
-                    IsOpen = false;
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
+            },
+            () => IsOpen = false);
         }
 
         private void Init()
@@ -928,11 +905,13 @@ namespace NST
 
                     var previousPosition = prefabChild.Object._parentSpacePosition;
                     var previousName = prefabChild.Object.ObjectName;
+                    var previousArchetype = prefabChild.Object._bitfield._isArchetype;
 
                     prefabComponentData.Remove(prefabChild.Object);
 
                     prefabChild.Object.ObjectName = $"_FakePrefab_{parentPrefab.Object.ObjectName}___{prefabChild.Object.ObjectName}";
                     prefabChild.Object._parentSpacePosition = worldPos.ToVec3MetaField();
+                    prefabChild.Object._bitfield._isArchetype = false;
                     prefabChild.ParentPrefabInstance = null;
 
                     postSaveCallbacks.Add(() =>
@@ -941,6 +920,7 @@ namespace NST
 
                         prefabChild.Object.ObjectName = previousName;
                         prefabChild.Object._parentSpacePosition = previousPosition;
+                        prefabChild.Object._bitfield._isArchetype = previousArchetype;
                         prefabChild.ParentPrefabInstance = parentPrefab;
                     });
                 }
@@ -963,7 +943,7 @@ namespace NST
         {
             if (IsOpen) return false;
 
-            if (ArchiveRenderer.IsUpdated && !ArchiveRenderer.IsOpen)
+            if (ArchiveRenderer != null && ArchiveRenderer.IsUpdated && !ArchiveRenderer.IsOpen)
             {
                 ModalRenderer.ShowWarningModal("This archive has pending changes!", $"Are you sure you want to close {Archive.GetName()} without saving?", () => { ArchiveRenderer.IsUpdated = false; IsOpen = false; });
                 IsOpen = true;
@@ -1654,7 +1634,10 @@ namespace NST
 
         public void Focus(igObject obj)
         {
-            NSTObject? nstObj = InstanceManager.AllObjects.Find(e => e.GetObject() == obj);
+            NSTObject? nstObj = 
+                InstanceManager.AllObjects.Find(e => e.GetObject() == obj) ??
+                InstanceManager.AllObjects.Find(e => e.GetObject().ToString() == obj.ToString());
+
             if (nstObj == null)
             {
                 Console.WriteLine("Warning: Object not found: " + obj);

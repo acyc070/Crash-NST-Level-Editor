@@ -164,6 +164,44 @@ namespace NST
             return archive;
         }
 
+        public static void RenameLevel(ActiveFileManager fileManager, IgArchive archive, string newLevelName)
+        {
+            // Rename collision files
+
+            IgArchiveFile? collisionFileIgz = archive.FindCollisionFile(".igz");
+            IgArchiveFile? collisionFileHkx = archive.FindCollisionFile(".hkx");
+
+            if (collisionFileIgz != null && collisionFileHkx != null)
+            {
+                IgzFile collisionIgz = fileManager.GetIgz(collisionFileIgz) ?? collisionFileIgz.ToIgzFile();
+                collisionIgz.Objects.OfType<igNameList>().Last()._data[0]._name = $"StaticCollision_{newLevelName}";
+                collisionFileIgz.SetData(collisionIgz.Save());
+
+                collisionFileIgz.Rename($"StaticCollision_{newLevelName}.igz");
+                collisionFileHkx.Rename($"StaticCollision_{newLevelName}.hkx");
+            }
+
+            // Rename package file
+
+            IgArchiveFile packageFile = archive.FindPackageFile()!;
+            packageFile.Rename($"{newLevelName}_pkg.igz");
+
+            // Rename zone info file
+
+            IgArchiveFile? zoneInfoFile = archive.FindCustomZoneInfoFile();
+            if (zoneInfoFile == null) return;
+
+            zoneInfoFile.Rename($"{newLevelName}_zoneinfo.igz");
+
+            IgzFile zoneInfoIgz = fileManager.GetIgz(zoneInfoFile) ?? zoneInfoFile.ToIgzFile();
+            CZoneInfo? zoneInfo = zoneInfoIgz.FindObject<CZoneInfo>();
+            if (zoneInfo != null)
+            {
+                zoneInfo._name = packageFile.Path.Substring(packageFile.Path.IndexOf("maps/") + 5).Replace("_pkg.igz", "");
+                zoneInfoFile.SetData(zoneInfoIgz.Save());
+            }
+        }
+
         public static string ConvertToCustomLevel(IgArchive archive)
         {
             string levelName  = archive.FindPackageFile()!.GetName(false).Replace("_pkg", "");
@@ -254,7 +292,7 @@ namespace NST
             IgArchiveFile sourceLighting = sourceArchive.FindFile($"{levelName}_lighting.igz")!;
             IgzFile sourceLightingIgz = sourceLighting.ToIgzFile();
 
-            IgArchive modelArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L332_EggipusRex.pak"));
+            IgArchive modelArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L332_EggipusRex.pak"));
 
             progress.SetProgress("newlevel", 2/8f, $"Creating new level (2/8)...");
 
@@ -266,7 +304,7 @@ namespace NST
             string mainPath = $"{basePath}/Custom_Level/Custom_Level.igz";
             string cameraPath = $"{basePath}/Custom_Level/Custom_Level_Camera.igz";
             string lightingPath = $"{basePath}/Custom_Level/Custom_Level_lighting.igz";
-            string cratePath = $"{basePath}/Custom_Level/Custom_Level_Crates.igz";
+            string cratePath = $"{basePath}/Custom_Level/Custom_Level_MyCrates.igz";
             string musicPath = $"{basePath}/Custom_Level/Custom_Level_Music.igz";
             string infoPath = $"update/{basePath}/Custom_Level/Custom_Level_zoneinfo.igz".ToLowerInvariant();
 
@@ -318,6 +356,20 @@ namespace NST
                 }
             }
 
+            // common_Level_ManagerData
+
+            if (!components.Values.Any(c => c is common_Level_ManagerData))
+            {
+                string baseLevel = crashMode == 0 ? "L101_NSanityBeach" : crashMode == 1 ? "L201_TurtleWoods" : "L301_ToadVillage";
+                IgArchive baseArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, $"{baseLevel}.pak"));
+                IgArchiveFile baseFile = baseArchive.FindFile($"{baseLevel}.igz")!;
+                IgzFile baseIgz = baseFile.ToIgzFile();
+
+                var levelManager = baseIgz.FindObject<common_Level_ManagerData>()!;
+                
+                worldEntity.AddComponent("instance_Scripts.Graph.common_Level_ManagerData", levelManager);
+            }
+
             (worldEntity._entityData as CWorldEntityData)!._startingGameplayMode = EWorldGameplayMode.eWGM_Traditional;
             (worldEntity._entityData as CWorldEntityData)!._worldEntityFlags = 0; // 0x8 = cutscene camera (l101) => black screen if not handled
             (worldEntity._entityData as CWorldEntityData)!._killz = -2000;
@@ -346,7 +398,7 @@ namespace NST
 
             if (crashMode == 0)
             {
-                IgArchive levelEndArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L101_NSanityBeach.pak"));
+                IgArchive levelEndArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L101_NSanityBeach.pak"));
                 IgzFile levelEndIgz = levelEndArchive.FindFile("L101_NSanityBeach.igz")!.ToIgzFile();
 
                 igEntity levelEndScenePrefab = levelEndIgz.FindObject<igEntity>("LevelEndScene_prefab")!;
@@ -360,7 +412,7 @@ namespace NST
             }
             else if (crashMode == 1)
             {
-                IgArchive levelEndArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L219_Ruination.pak"));
+                IgArchive levelEndArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L219_Ruination.pak"));
                 IgzFile levelEndIgz = levelEndArchive.FindFile("L219_Ruination.igz")!.ToIgzFile();
 
                 CGameEntity levelEndTeleporter = levelEndIgz.FindObject<CGameEntity>("C2_LevelEndTeleporter")!;
@@ -371,7 +423,7 @@ namespace NST
             }
             else if (crashMode == 2)
             {
-                IgArchive levelEndArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L321_GoneTomorrow.pak"));
+                IgArchive levelEndArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L321_GoneTomorrow.pak"));
                 IgzFile levelEndIgz = levelEndArchive.FindFile("L321_GoneTomorrow.igz")!.ToIgzFile();
 
                 CEntity introCutscene = levelEndIgz.FindObject<CEntity>("IntroCutsceneSequencePlayer")!;
@@ -405,7 +457,7 @@ namespace NST
 
             // Add crates
 
-            IgArchive sourceCrateArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "Crash_Crates.pak"));
+            IgArchive sourceCrateArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "Crash_Crates.pak"));
             IgArchiveFile sourceCrateFile = sourceCrateArchive.FindFile("Crash_Crates.igz")!;
             IgzFile sourceCrateIgz = sourceCrateFile.ToIgzFile();
 
@@ -670,6 +722,13 @@ namespace NST
             "crash2" => 1,
             "crash3" => 2,
             _        => 1,
+        };
+        public static int GetGameYearInt(EGameYear year) => year switch
+        {
+            EGameYear.eGY_2017_Crash1 => 0,
+            EGameYear.eGY_2017_Crash2 => 1,
+            EGameYear.eGY_2017_Crash3 => 2,
+            _ => 0
         };
     }
 }

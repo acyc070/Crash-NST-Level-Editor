@@ -113,7 +113,23 @@ namespace NST
             }}
         };
 
-        private static readonly Dictionary<string, (string fileName, string objectName, string suffix)> splineCameraPaths = new ()
+        private static readonly Dictionary<string, (string floor, string level)> _levelEntrances = new() 
+        {
+            { "Temple Frame",  ("Floor01", "L201_TurtleWoods") },
+            { "Snow Frame",    ("Floor02", "L206_SnowBiz") },
+            { "Mine Frame 1",  ("Floor04", "L216_HanginOut") },
+            { "Mine Frame 2",  ("Floor04", "L219_Ruination") },
+            { "Space Frame 1", ("Floor05", "L222_RockIt") },
+            { "Space Frame 2", ("Floor05", "L221_PistonItAway") },
+            { "Sewer Frame 1", ("Floor03", "L211_PlantFood") },
+            { "Sewer Frame 2", ("Floor03", "L212_SewerOrLater") },
+            { "Sewer Frame 3", ("Floor03", "L213_BearDown") },
+            { "Sewer Frame 4", ("Floor03", "L214_RoadToRuin") },
+            { "Sewer Frame 5", ("Floor03", "L215_UnBearable") },
+            // { "Secret Frame",  ("SecretWarpRoom", "L227_TotallyFly_Secret") },
+        };
+
+        private static readonly Dictionary<string, (string fileName, string objectName, string suffix)> _splineCameraPaths = new ()
         {
             { "forward",    ("L210_TheEelDeal_Cameras",  "MainPath_SplineCam06", "") },
             { "backward",   ("L104_Boulders_Camera",     "CSplineCamera012", "Chase") },
@@ -121,7 +137,7 @@ namespace NST
             { "vertical",   ("L103_TheGreatGate_Camera", "Camera01_V", "Vertical") },
         };
 
-        private static readonly Dictionary<string, bool> selectAll = new() 
+        private static readonly Dictionary<string, bool> _selectAll = new() 
         {
             {"Static Objects", true},
             {"Prefabs", true},
@@ -200,6 +216,8 @@ namespace NST
                 }
                 return;
             }
+
+            ObjectCollection.Update();
 
             if (ImGui.BeginPopup("ObjectFactoryContextMenu"))
             {
@@ -295,25 +313,24 @@ namespace NST
                         ImGui.EndMenu();
                     }
 
-                    if (ImGui.BeginMenu("Level platform..."))
-                    {
-                        if (ImGui.MenuItem("L103_TheGreatGate   |  Wooden spinning platform ")) TryAddObject(() => AddGeneric("L103_TheGreatGate_Platforms", "Village_Platform_SpinningPlat", "Platforms", explorer));
-                        if (ImGui.MenuItem("L106_RollingStones  |  Falling stone pillar     ")) TryAddObject(() => AddGeneric("L106_RollingStones_Hazards", "Jungle_Platform_Stone_FallAway002", "Platforms", explorer));
-                        if (ImGui.MenuItem("L106_RollingStones  |  Moving stone pillar      ")) TryAddObject(() => AddGeneric("L106_RollingStones_Hazards", "Jungle_Platform_Stone_Spline001", "Platforms", explorer));
-                        if (ImGui.MenuItem("L108_NativeFortress |  Cloud platform           ")) TryAddObject(() => AddGeneric("L108_NativeFortress_Platforms", "Village_Platform_Clouds007", "Platforms", explorer));
-                        // if (ImGui.MenuItem("L111_TempleRuins    |  Spline temple platform   ")) TryAddObject(() => AddGeneric("L111_TempleRuins_Platforms", "Temple_Platform_Spline", "Platforms", explorer));
-                        if (ImGui.MenuItem("L111_TempleRuins    |  Falling temple platform  ")) TryAddObject(() => AddGeneric("L111_TempleRuins_Platforms", "Temple_Platform_FallAway", "Platforms", explorer));
-                        if (ImGui.MenuItem("L111_TempleRuins    |  Up/down temple platform  ")) TryAddObject(() => AddGeneric("L111_TempleRuins_Platforms", "Temple_Platform_UpDown", "Platforms", explorer));
-                        if (ImGui.MenuItem("L111_TempleRuins    |  Orbit temple platform    ")) TryAddObject(() => AddGeneric("L111_TempleRuins_Platforms", "Temple_Platform_Orbit_Spline001", "Platforms", explorer));
-                        if (ImGui.MenuItem("L112_RoadToNowhere  |  Upside down bounce turtle")) TryAddObject(() => AddGeneric("L112_RoadToNowhere_BounceTurtle", "Jungle_Enemy_Bounce_Turtle", "Platforms", explorer));
-                        if (ImGui.MenuItem("L201_TurtleWoods    |  Body slam entrance       ")) TryAddObject(() => AddGeneric("L201_TurtleWoods", [("L201_TurtleWoods", "Jungle_SecretEntrance_BodySlam"), ("L201_TurtleWoods_Art", "HolePitrim01")], "Platforms", explorer));
-                        ImGui.EndMenu();
-                    }
-
                     if (ImGui.BeginMenu("Teleporter..."))
                     {
                         if (ImGui.MenuItem("Fade In/Out Teleporter")) TryAddObject(() => AddFadeTeleporter(explorer));
                         if (ImGui.MenuItem("Warp Teleporter")) TryAddObject(() => AddWarpTeleporter(explorer));
+                        ImGui.EndMenu();
+                    }
+
+                    if (ImGui.BeginMenu("Level entrance..."))
+                    {
+                        string last = "";
+                        foreach ((string displayName, (string floor, string level)) in _levelEntrances)
+                        {
+                            if (!string.IsNullOrEmpty(last) && last != floor) ImGui.Separator();
+                            last = floor;
+                            
+                            if (ImGui.MenuItem(displayName)) TryAddObject(() => AddLevelEntrance(explorer, floor, level));
+                        }
+
                         ImGui.EndMenu();
                     }
                     
@@ -427,10 +444,6 @@ namespace NST
 
                         ImGui.EndMenu();
                     }
-
-                    // if (ImGui.MenuItem("Generic Platform Path")) AddPlatformPath("Generic", explorer);
-                    // if (ImGui.MenuItem("Bonus Platform Path")) AddPlatformPath("Bonus", explorer);
-                    // if (ImGui.MenuItem("Death Platform Path")) AddPlatformPath("Death", explorer);
                     
                     ImGui.EndMenu();
                 }
@@ -504,6 +517,13 @@ namespace NST
                     if (ImGui.MenuItem("New Dynamic Clip")) TryAddObject(() => AddCDynamicClipEntity(explorer));
                     if (ImGui.MenuItem("New Dynamic Clip Switch")) TryAddObject(() => AddGeneric("L103_TheGreatGate_Platforms", "PlatformHelper01_Collision", "Platforms", explorer, newObjectName: "DynamicClip_Switch_001", addToSelection: true));
                     ImGui.Separator();
+                    if (ImGui.BeginMenu("New Chase..."))
+                    {
+                        if (ImGui.MenuItem("Boulder Chase")) TryAddObject(() => AddGeneric("L104_Boulders_Hazards", "Spawner_Boulder03", "Chase", explorer, _ => EnableGameMode("boulder", explorer), "Boulder_Chase"));
+                        if (ImGui.MenuItem("Polar Bear Chase")) TryAddObject(() => AddGeneric("L215_UnBearable_Enemies", "Section04_Bear", "Chase", explorer, newObjectName: "Bear_Chase"));
+                        if (ImGui.MenuItem("Triceratops Chase")) TryAddObject(() => AddGeneric("L304_BoneYard_Hazards", "Triceratops_Section02", "Chase", explorer, newObjectName: "Triceratops_Chase"));
+                        ImGui.EndMenu();
+                    }
                     if (ImGui.MenuItem("New Boost Pad")) TryAddObject(() => AddGenericTemplate("Chase_BoostPad", "Platforms", explorer));
                     if (ImGui.MenuItem("New Bounce Mine")) TryAddObject(() => AddGenericTemplate("Chase_BounceMine", "Hazards", explorer));
                     if (ImGui.MenuItem("New Cannon Ball")) TryAddObject(() => AddCannonBall(explorer));
@@ -514,19 +534,19 @@ namespace NST
                 {
                     if (ImGui.SmallButton("Toggle all"))
                     {
-                        bool toggle = !selectAll["Static Objects"];
-                        foreach (var e in selectAll)
+                        bool toggle = !_selectAll["Static Objects"];
+                        foreach (var e in _selectAll)
                         {
-                            selectAll[e.Key] = toggle;
+                            _selectAll[e.Key] = toggle;
                         }
                     }
 
-                    foreach (var e in selectAll)
+                    foreach (var e in _selectAll)
                     {
                         bool tmp = e.Value;
                         if (ImGui.Checkbox(e.Key, ref tmp))
                         {
-                            selectAll[e.Key] = tmp;
+                            _selectAll[e.Key] = tmp;
                         }
                     }
 
@@ -542,27 +562,27 @@ namespace NST
                                 
                                 if (entity.IsTemplate)                                return false;
                                 if (entity.IsPrefabChild || entity.IsPrefabTemplate)  return false;
-                                if (entity.IsPrefabInstance)                          return selectAll["Prefabs"];
-                                if (entity.Model != null && type == typeof(igEntity)) return selectAll["Static Objects"];
+                                if (entity.IsPrefabInstance)                          return _selectAll["Prefabs"];
+                                if (entity.Model != null && type == typeof(igEntity)) return _selectAll["Static Objects"];
 
-                                if (entity.IsLight)  return selectAll["Lights"];
-                                if (entity.IsVFX)    return selectAll["VFX"];
-                                if (entity.IsSFX)    return selectAll["SFX"];
-                                if (entity.IsHidden) return selectAll["Hidden"];
+                                if (entity.IsLight)  return _selectAll["Lights"];
+                                if (entity.IsVFX)    return _selectAll["VFX"];
+                                if (entity.IsSFX)    return _selectAll["SFX"];
+                                if (entity.IsHidden) return _selectAll["Hidden"];
 
-                                if (type == typeof(CEntity))              return selectAll["CEntity"];
-                                if (type == typeof(CGameEntity))          return selectAll["CGameEntity"];
-                                if (type == typeof(CPhysicalEntity))      return selectAll["CPhysicalEntity"];
-                                if (type == typeof(CDynamicClipEntity))   return selectAll["Dynamic Clips"];
-                                if (type == typeof(CScriptTriggerEntity)) return selectAll["Script Triggers"];
+                                if (type == typeof(CEntity))              return _selectAll["CEntity"];
+                                if (type == typeof(CGameEntity))          return _selectAll["CGameEntity"];
+                                if (type == typeof(CPhysicalEntity))      return _selectAll["CPhysicalEntity"];
+                                if (type == typeof(CDynamicClipEntity))   return _selectAll["Dynamic Clips"];
+                                if (type == typeof(CScriptTriggerEntity)) return _selectAll["Script Triggers"];
                             }
                             else
                             {
-                                if (obj is NSTCamera)    return selectAll["Cameras"];
-                                if (obj is NSTCameraBox) return selectAll["Camera Boxes"];
+                                if (obj is NSTCamera)    return _selectAll["Cameras"];
+                                if (obj is NSTCameraBox) return _selectAll["Camera Boxes"];
                             }
 
-                            return selectAll["Other"];
+                            return _selectAll["Other"];
                         })
                         .SelectMany(e => explorer.InstanceManager.Select(e))
                         .Distinct()
@@ -571,6 +591,12 @@ namespace NST
                         explorer.SelectionManager.UpdateSelection(selection, true, true);
                     }
 
+                    ImGui.EndMenu();
+                }
+
+                if (ImGui.BeginMenu("Object library..."))
+                {
+                    ObjectCollection.Render(explorer);
                     ImGui.EndMenu();
                 }
 
@@ -594,7 +620,7 @@ namespace NST
         {
             if (templateArchive == null || templateFile == null || templateIgz ==  null)
             {
-                templateArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "Crash_Crates.pak"));
+                templateArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "Crash_Crates.pak"));
                 templateFile = templateArchive.FindFile("Crash_Crates.igz")!;
                 templateIgz = templateFile.ToIgzFile();
                 templateIgz.FindObject<CEntityHandleList>("Crate_Switch_entityData_componentData_CommonCrateSwitchIron_OulinedCrates")!._data.Clear();
@@ -603,7 +629,7 @@ namespace NST
             }
         }
 
-        private static void TryAddObject(Action callback)
+        public static void TryAddObject(Action callback)
         {
             try
             {
@@ -722,7 +748,7 @@ namespace NST
         {
             SetupTemplateArchive();
 
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L220_BeeHaving_Crates.igz")!.ToIgzFile();
 
             CEntity crate = sourceIgz.FindObject<CEntity>("Crate_Nitro_Flying")!;
@@ -829,12 +855,10 @@ namespace NST
 
         private static void AddSplineCamera(LevelExplorer explorer, string type)
         {
-            if (!splineCameraPaths.TryGetValue(type, out var splinePath)) return;
+            if (!_splineCameraPaths.TryGetValue(type, out var splinePath)) return;
 
-            string[] parts = splinePath.fileName.Split('_');
-            string archiveName = parts.Length >= 2 ? $"{parts[0]}_{parts[1]}" : splinePath.fileName;
-
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, archiveName + ".pak"));
+            string archiveName = ExtractArchiveName(splinePath.fileName);
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
             IgArchiveFile sourceFile = sourceArchive.FindFile(splinePath.fileName + ".igz")!;
             IgzFile sourceIgz = sourceFile.ToIgzFile();
 
@@ -894,7 +918,7 @@ namespace NST
 
         private static void AddStackCamera(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L305_MakinWaves.igz")!.ToIgzFile();
 
             CStackCamera stackCamera = sourceIgz.FindObject<CStackCamera>()!;
@@ -905,9 +929,31 @@ namespace NST
             explorer.Clone([stackCamera], sourceArchive, sourceIgz, cameraFile, cameraIgz);
         }
 
+        private static void AddLevelEntrance(LevelExplorer explorer, string floor, string level)
+        {
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L200_Hub.pak"));
+            IgzFile sourceIgz = sourceArchive.FindFile($"L200_Hub_{floor}.igz")!.ToIgzFile();
+            IgzFile sourceIgzFrame = sourceArchive.FindFile($"L200_Hub_Floor01.igz")!.ToIgzFile();
+
+            CGameEntity portal = sourceIgz.FindObject<CGameEntity>($"{level}_Portal")!;
+            CGameEntity frame = sourceIgzFrame.FindObject<CGameEntity>($"C2_PortalFrame{level.Substring(0, 4)}")!;
+
+            explorer.GetOrCreateIgzFile("Hub", out IgArchiveFile hubFile, out IgzFile hubIgz);
+
+            if (portal.TryGetComponent(out common_C2_WarpRoom_LevelPortal? portalComponent))
+            {
+                portalComponent._Camera_Base.Reference = null;
+                portalComponent._Entity_0xd8.Reference!.namespaceName = hubFile.GetName(false);
+            }
+
+            explorer.Clone([portal, frame], sourceArchive, sourceIgz, hubFile, hubIgz, addToSelection: true, initializeObjects: true);
+
+            EnableGameMode("hub", explorer);
+        }
+
         private static void AddCannonBall(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L305_MakinWaves.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L305_MakinWaves.igz")!.ToIgzFile();
 
             CGameEntity cannonBall = sourceIgz.FindObject<CGameEntity>("Jetski_Hazard_Cannonball_Spawned_gen")!;
@@ -944,7 +990,7 @@ namespace NST
 
         private static void AddCameraTrigger(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L201_TurtleWoods.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L201_TurtleWoods.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L201_TurtleWoods_Hazards.igz")!.ToIgzFile();
 
             var trigger = sourceIgz.FindObject<CScriptTriggerEntity>("MousePit_CameraTrigger00")!;
@@ -962,7 +1008,7 @@ namespace NST
 
         private static void AddCDynamicClipEntity(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L301_ToadVillage.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L301_ToadVillage.pak"));
             IgzFile sourceIgz = sourceArchive.FindFile("L301_ToadVillage_Crates.igz")!.ToIgzFile();
 
             CDynamicClipEntity clip = sourceIgz.FindObject<CDynamicClipEntity>()!;
@@ -1025,7 +1071,7 @@ namespace NST
 
         private static void AddWarpTeleporter(LevelExplorer explorer)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L220_BeeHaving.pak"));
             IgArchiveFile sourceFile = sourceArchive.FindFile("L220_BeeHaving_BonusArea.igz")!;
             IgzFile sourceIgz = sourceFile.ToIgzFile();
 
@@ -1044,7 +1090,7 @@ namespace NST
 
         private static void AddTRex(LevelExplorer explorer, bool dismount)
         {
-            IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, "L332_EggipusRex.pak"));
+            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, "L332_EggipusRex.pak"));
             IgzFile mainIgz = sourceArchive.FindFile("L332_EggipusRex.igz")!.ToIgzFile();
 
             explorer.GetOrCreateIgzFile("TRex", out IgArchiveFile newFile, out IgzFile newIgz);
@@ -1107,11 +1153,11 @@ namespace NST
         {
             ModalRenderer.ShowLoadingModal("Importing bonus round...");
 
-            Task.Run(() =>
+            CrashHandler.TryRunTask("importing bonus round", () =>
             {
                 (string archiveName, string fileName) = _bonusFiles[type];
 
-                IgArchive sourceArchive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, archiveName + ".pak"));
+                IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
                 IgzFile sourceIgz = sourceArchive.FindFile(fileName + ".igz")!.ToIgzFile();
 
                 igEntity bonusPrefab = sourceIgz.FindObject<igEntity>($"BonusRound_{type}_prefab")!;
@@ -1146,40 +1192,7 @@ namespace NST
                 // explorer.InstanceManager.RefreshInstances(explorer.InstanceManager.AllObjects);
 
                 ModalRenderer.CloseLoadingModal();
-            })
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
-                {
-                    foreach (var ex in t.Exception.InnerExceptions)
-                    {
-                        CrashHandler.Log($"Error importing bonus round: {ex.Message}\n{ex.StackTrace}");
-                    }
-                    string logPath = CrashHandler.WriteLogsToFile();
-                    ModalRenderer.ShowMessageModal("Error", $"An error occured while importing the bonus round\n\nLog file: {logPath}");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-        }
-
-        private static void AddGeneric(string archiveName, List<(string fileName, string objectName)> objectPaths, string identifier, LevelExplorer explorer, Action<List<NSTObject>>? callback = null)
-        {
-            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
-            
-            explorer.GetOrCreateIgzFile(identifier, out IgArchiveFile dstFile, out IgzFile dstIgz);
-
-            List<NSTObject> clones = [];
-
-            foreach ((string fileName, string objectName) in objectPaths)
-            {
-                IgzFile sourceIgz = sourceArchive.FindFile(fileName, FileSearchType.Name, FileSearchParams.MapIgz)!.ToIgzFile();
-                igObject obj = sourceIgz.FindObject<igObject>(objectName)!;
-
-                clones.AddRange(explorer.Clone([obj], sourceArchive, sourceIgz, dstFile, dstIgz, addToSelection: null, initializeObjects: true));
-            }
-
-            explorer.SelectAndMoveToCamera(clones.Where(c => c is not NSTEntity e || !e.IsTemplate).ToList(), 400);
-
-            callback?.Invoke(clones);
+            });
         }
 
         private static void AddGenericExternal(string archiveName, List<(string fileName, string objectName)> objectPaths, LevelExplorer explorer, List<string>? newObjectNames = null)
@@ -1209,12 +1222,11 @@ namespace NST
             explorer.SelectAndMoveToCamera(clones.Where(c => c is not NSTEntity e || !e.IsTemplate).ToList(), 400);
         }
 
-        private static void AddGeneric(string fileName, string objectName, string identifier, LevelExplorer explorer, Action<List<NSTObject>>? callback = null, string? newObjectName = null, float camDistance = 400, bool addToSelection = false)
+        public static void AddGeneric(string fileName, string objectName, string identifier, LevelExplorer explorer, Action<List<NSTObject>>? callback = null, string? newObjectName = null, float camDistance = 400, bool addToSelection = false, string? archivePath = null)
         {
-            string[] parts = fileName.Split('_');
-            string archiveName = parts.Length >= 2 ? $"{parts[0]}_{parts[1]}" : fileName;
-
-            IgArchive sourceArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
+            string archiveName = ExtractArchiveName(fileName);
+            archivePath ??= Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak");
+            IgArchive sourceArchive = IgArchive.Open(archivePath);
             IgzFile sourceIgz = sourceArchive.FindFile(fileName, FileSearchType.Name, FileSearchParams.MapIgz)!.ToIgzFile();
             
             igObject obj = sourceIgz.FindObject<igObject>(objectName)!;
@@ -1226,6 +1238,86 @@ namespace NST
             var clones = explorer.Clone([obj], sourceArchive, sourceIgz, dstFile, dstIgz, addToSelection: addToSelection, initializeObjects: true, camDistance: camDistance);
 
             callback?.Invoke(clones);
+        }
+
+        public static void AddGenericCollection(ObjectCollection.CollectionEntry entry, LevelExplorer explorer)
+        {
+            string archivePath = entry.ArchivePath ?? Path.Combine(LocalStorage.ArchivePath, $"{entry.ArchiveName}.pak");
+
+            var sourceArchive = IgArchive.Open(archivePath);
+            var sourceFile = sourceArchive.FindFile(entry.FileName, FileSearchType.Name, FileSearchParams.MapIgz)!;
+            var sourceIgz = sourceFile.ToIgzFile();
+            var obj = sourceIgz.FindObject<igEntity>(entry.ObjectName)!;
+
+            Dictionary<igObject, igObject> clones = [];
+            string? originalName = obj.ObjectName;
+
+            obj.ObjectName = entry.DisplayName;
+            obj._bitfield._canSpawn = true;
+            obj._bitfield._isArchetype = false;
+            
+            explorer.GetOrCreateExternalIgzFile(sourceFile.Path, out IgArchiveFile dstFile, out IgzFile dstIgz);
+
+            var newObjects = explorer.Clone([obj], sourceArchive, sourceIgz, dstFile, dstIgz, addToSelection: true, initializeObjects: true, camDistance: 800, clones: clones);
+
+            // Setup collisions
+
+            if (!entry.HasCollisions) 
+                return;
+
+            var collisionHkx = sourceArchive.FindCollisionFile(".hkx")?.ToHavokFile();
+
+            if (collisionHkx?.GetAllObjects().Find(e => e is hknpStaticCompoundShape) is not hknpStaticCompoundShape compoundShape)
+                return;
+
+            var collisionsDict = StaticCollisionsUtils.GetCollisionData(sourceArchive);
+            var newEntities = newObjects.OfType<NSTEntity>().ToDictionary(e => e.Object, e => e);
+
+            obj.ObjectName = originalName;
+
+            foreach ((igObject src, igObject dst) in clones)
+            {
+                if (src is not igEntity srcEntity || dst is not igEntity dstEntity) continue;
+
+                // Prefab collisions
+                if (newEntities.TryGetValue(dstEntity, out NSTEntity? prefabEntity) &&
+                    srcEntity.TryGetComponent(out igPrefabComponentData? prefabComponent) && 
+                    prefabComponent._prefabEntities != null)
+                {
+                    foreach (var srcChild in prefabComponent._prefabEntities._data)
+                    {
+                        if (!clones.TryGetValue(srcChild, out igObject? dstChild)) continue;
+
+                        var nstEntity = prefabEntity.Children.OfType<NSTEntity>().FirstOrDefault(e => e.ParentPrefabInstance == prefabEntity && e.Object == dstChild);
+                        if (nstEntity == null) continue;
+
+                        var shape = StaticCollisionsUtils.FindPrefabCollision(srcEntity, srcChild, compoundShape);
+                        if (shape == null) continue;
+
+                        // Console.WriteLine($"Add collision for {src} => {dst.ObjectName} / {srcChild} => {dstChild} [prefab]");
+
+                        nstEntity.CollisionShapeIndex = int.MaxValue;
+                        explorer.ArchiveRenderer.SetEntityUpdated(nstEntity, shape);
+
+                        explorer.InstanceManager.FakePrefabChilds.Add(nstEntity);
+                    }
+                }
+                // Regular collisions
+                else
+                {
+                    var reference = src.ToNamedReference(sourceFile.GetName(false)).ToEXID();
+
+                    if (!collisionsDict.TryGetValue(reference, out int collisionId)) continue;
+                    if (!newEntities.TryGetValue(dstEntity, out NSTEntity? nstEntity)) continue;
+
+                    // Console.WriteLine($"Add collision for {src} => {dst.ObjectName} ({collisionId})");
+
+                    var shape = compoundShape._elements.GetElements()[collisionId];
+
+                    nstEntity.CollisionShapeIndex = int.MaxValue;
+                    explorer.ArchiveRenderer.SetEntityUpdated(nstEntity, shape);
+                }
+            }
         }
 
         private static void AddGenericTemplate(string name, string identifier, LevelExplorer explorer)
@@ -1290,31 +1382,19 @@ namespace NST
         private static void AddC2BonusRound(string archiveName, LevelExplorer explorer)
         {
             ModalRenderer.ShowLoadingModal("Importing bonus round... (this can take a few seconds)");
-            Task.Run(() =>
+            CrashHandler.TryRunTask("importing bonus round", () =>
             {
                 AddC2BonusRoundInternal(archiveName, explorer);
                 ModalRenderer.CloseLoadingModal();
-            })
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
-                {
-                    foreach (var ex in t.Exception.InnerExceptions)
-                    {
-                        CrashHandler.Log($"Error importing bonus round: {ex.Message}\n{ex.StackTrace}");
-                    }
-                    string logPath = CrashHandler.WriteLogsToFile();
-                    ModalRenderer.ShowMessageModal("Error", $"An error occured while importing the bonus round\n\nLog file: {logPath}");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
+            });
         }
 
         private static void AddC2BonusRoundInternal(string archiveName, LevelExplorer explorer)
         {
-            var archive = IgArchive.Open(Path.Join(LocalStorage.ArchivePath, archiveName + ".pak"));
+            var archive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, archiveName + ".pak"));
             var collisionData = StaticCollisionsUtils.GetCollisionData(archive);
             var collisionFile = archive.FindCollisionFile(".hkx")!.ToHavokFile();
-            var compoundShape = (hknpCompoundShape)collisionFile.GetRootObjects().Find(e => e is hknpCompoundShape)!;
+            var compoundShape = (hknpStaticCompoundShape)collisionFile.GetRootObjects().Find(e => e is hknpStaticCompoundShape)!;
 
             (THREE.Vector3 center, THREE.Vector3 min, THREE.Vector3 max, bool isTeleport) = _bonusBounds[archiveName];
             THREE.Box3 bounds = new THREE.Box3(center + min, center + max);
@@ -1440,23 +1520,14 @@ namespace NST
                     {
                         if (!child.IsPrefabChild) continue;
 
-                        var entityPos = new THREE.Vector3();
-                        child.ObjectToWorld().Decompose(entityPos, new THREE.Quaternion(), new THREE.Vector3());
+                        var shape = StaticCollisionsUtils.FindPrefabCollision(e.Object, child.Object, compoundShape);
+                        if (shape == null) continue;
 
-                        for (int i = 0; i < compoundShape._elements.Count; i++)
-                        {
-                            var shape = compoundShape._elements[i];
-                            var havokPos = new THREE.Vector3(shape._transform.M41, shape._transform.M42, shape._transform.M43);
-                            float distance = havokPos.DistanceTo(entityPos * 0.0254f);
-                            
-                            if (distance < 0.01f)
-                            {
-                                child.CollisionShapeIndex = i;
-                                child.CollisionPrefabHash = collisionData.First(e => e.Value == i).Key.objectHash;
-                                explorer.ArchiveRenderer.SetEntityUpdated(child, shape);
-                                break;
-                            }
-                        }
+                        int index = compoundShape._elements.IndexOf(shape);
+                        child.CollisionPrefabHash = collisionData.First(e => e.Value == index).Key.objectHash;
+                        child.CollisionShapeIndex = index;
+
+                        explorer.ArchiveRenderer.SetEntityUpdated(child, shape);
                     }
                 }
             }
@@ -1579,6 +1650,17 @@ namespace NST
             safeArea.MemoryPool.alignment = 16;
 
             return camera;
+        }
+
+        /// <summary>
+        /// Extract the archive's name from a file name. Eg: "L101_NSanityBeach_Enemies" -> "L101_NSanityBeach"
+        /// </summary>
+        /// <param name="filePath"></param>
+        /// <returns></returns>
+        public static string ExtractArchiveName(string fileName)
+        {
+            string[] parts = fileName.Split('_');
+            return parts.Length >= 2 ? $"{parts[0]}_{parts[1]}" : fileName;
         }
     }
 }

@@ -759,6 +759,10 @@ namespace NST
                     }
                     explorer.ArchiveRenderer.SetEntityUpdated(childTemplate);
 
+                    if (scale._x == 0) scale._x = 0.0001f;
+                    if (scale._y == 0) scale._y = 0.0001f;
+                    if (scale._z == 0) scale._z = 0.0001f;
+
                     childTemplate.Object._transform._nonUniformPersistentParentSpaceScale = scale;
 
                     explorer.SelectionManager.ScaleSelectionFromGUI(previousScale, scale.ToVector3(), this);
@@ -766,9 +770,9 @@ namespace NST
 
                 if (onRelease && childTemplate.Object._transform != null)
                 {
-                    childTemplate.Object._transform._nonUniformPersistentParentSpaceScale._x /= explorer.SelectionManager.SelectionContainer.Scale.X;
-                    childTemplate.Object._transform._nonUniformPersistentParentSpaceScale._y /= explorer.SelectionManager.SelectionContainer.Scale.Y;
-                    childTemplate.Object._transform._nonUniformPersistentParentSpaceScale._z /= explorer.SelectionManager.SelectionContainer.Scale.Z;
+                    THREE.Vector3 currentScale = childTemplate.Object._transform._nonUniformPersistentParentSpaceScale.ToVector3();
+                    THREE.Vector3 newScale = MathUtils.SafeDivide(currentScale, explorer.SelectionManager.SelectionContainer.Scale);
+                    childTemplate.Object._transform._nonUniformPersistentParentSpaceScale = newScale.ToVec3MetaField();
                     explorer.SelectionManager.ApplyChanges("scale");
                 }
             }
@@ -785,15 +789,19 @@ namespace NST
                     }
                     explorer.ArchiveRenderer.SetEntityUpdated(this);
 
+                    if (transform._nonUniformPersistentParentSpaceScale._x == 0) transform._nonUniformPersistentParentSpaceScale._x = 0.0001f;
+                    if (transform._nonUniformPersistentParentSpaceScale._y == 0) transform._nonUniformPersistentParentSpaceScale._y = 0.0001f;
+                    if (transform._nonUniformPersistentParentSpaceScale._z == 0) transform._nonUniformPersistentParentSpaceScale._z = 0.0001f;
+
                     explorer.SelectionManager.ScaleSelectionFromGUI(previousScale, transform._nonUniformPersistentParentSpaceScale.ToVector3(), this);
                 }
                 if (disableScale) ImGui.EndDisabled();
 
                 if (onRelease)
                 {
-                    transform._nonUniformPersistentParentSpaceScale._x /= explorer.SelectionManager.SelectionContainer.Scale.X;
-                    transform._nonUniformPersistentParentSpaceScale._y /= explorer.SelectionManager.SelectionContainer.Scale.Y;
-                    transform._nonUniformPersistentParentSpaceScale._z /= explorer.SelectionManager.SelectionContainer.Scale.Z;
+                    THREE.Vector3 currentScale = transform._nonUniformPersistentParentSpaceScale.ToVector3();
+                    THREE.Vector3 newScale = MathUtils.SafeDivide(currentScale, explorer.SelectionManager.SelectionContainer.Scale);
+                    transform._nonUniformPersistentParentSpaceScale = newScale.ToVec3MetaField();
                     explorer.SelectionManager.ApplyChanges("scale");
                 }
             }

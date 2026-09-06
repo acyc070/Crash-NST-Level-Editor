@@ -22,6 +22,7 @@
   - [Checkpoint Text](#checkpoint-text)
   - [On Start Music](#on-start-music)
 ---
+- [Custom hub/modpacks](#custom-hubs--modpacks)
 - [CTR:NF support](#ctrnf-support)
 
 # New Level
@@ -194,6 +195,22 @@ Use the quick-access menu (right-click) to create various objects:
 - **New Bonus Round**: Import a bonus round from C1 (tawna/brio/cortex) or any bonus round from C2/C3
 - **New Camera**: Create a new camera (Relative Camera, Spline Camera or Free Camera) or a new camera transition zone
 - **Other**: Create other useful objects (Death Trigger, Invisible Walls...)
+
+### Object library
+
+<img src="assets/readme/level_editor/library.png" alt="Object library" height="500"/>
+
+Use the object library to quicky search through the game assets.
+
+- The first initialization can take 10-20 minutes to complete. 
+During this time the editor window may become unresponsive but other apps should be fine - you can open up a second instance of the editor in the meantime without issue.
+- You can automatically scan folders containing custom .pak archives and add their objects to the library (useful to add assets from CTR:NF). 
+Use `Settings -> Add custom folder` (note: you shouldn't move the original archives after the scan or you won't be able to import their objects using the library anymore)
+
+Controls:
+- Click on an object to import it
+- Right-click on an object to focus it in its original archive or to add it to favorites
+- Hover a preview image to make it bigger
 
 ## Object properties
 
@@ -404,6 +421,39 @@ It's possible to change the text that is displayed when breaking checkpoints, al
 You can listen to the default music, and import your own audio files (.mp3) using this component.
 
 <img src="assets/readme/level_editor/c_music.jpg" alt="On Start Music" width="300"/>
+
+# Custom hubs / modpacks
+
+You can create custom hubs from which to access mutliple custom levels at once.
+
+### Custom Level setup
+
+Here's how to setup a custom level before adding it to your modpack/hub:
+
+1) Find the custom level archive (.pak) that you wish to add to your modpack
+2) Make sure the archive's name doesn't contain any space or special character (example of a valid name: `My_Amazing_1st_Level.pak`)
+3) Open the archive using the editor, and click `"File -> Archive -> Update level name"` to setup the archive internally
+4) Save the archive and place it in the game's `archives/` folder. If you were to rename it later, make sure to do step 3) again and edit your hub (see below)
+
+### Custom Hub setup
+
+Note: No special step is required to create a custom hub, you can use the "New Level" feature as usual
+
+Here's how to add a custom level to a custom hub:
+
+1) Right click -> `New platform -> Level entrance...`
+2) Select the newly created Portal entity, and focus its `C2_WarpRoom_LevelPortal` component
+3) Change the "Level" property to match the archive's name (as set above)
+
+<img src="assets/readme/level_editor/entrance.png" alt="Level entrance" height="500"/>
+
+### Installing Custom Hubs
+
+Here are the recommended indications for installing a custom hub/modpack after downloading it:
+
+1) Place the hub archive anywhere on your PC.
+2) Place all level archives in the game's `archives/` folder directly, without creating a subfolder.
+3) Use "Play Custom Level" and run the hub archive.
 
 # CTR:NF support
 

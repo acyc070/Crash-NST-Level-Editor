@@ -189,7 +189,7 @@ namespace NST
                         if (_hasPackageFile && ImGui.MenuItem("Save and run", "Ctrl+L")) TrySaveArchive(launchGame: true);
                         ImGui.Separator();
                         if (ImGui.MenuItem("Remove unused files")) this.RemoveUnusedFiles();
-                        if (ImGui.MenuItem("Compress and save")) TrySaveArchive(compress: true);
+                        if (ImGui.MenuItem("Compress and save...")) TrySaveArchive(compress: true);
                     }
                     else
                     {
@@ -198,7 +198,7 @@ namespace NST
                         if (_hasPackageFile && ImGui.MenuItem("Save and run", "Ctrl+L")) customSaveMethod(false, true, false);
                         ImGui.Separator();
                         if (ImGui.MenuItem("Remove unused files")) this.RemoveUnusedFiles();
-                        if (ImGui.MenuItem("Compress and save")) customSaveMethod(false, false, true);
+                        if (ImGui.MenuItem("Compress and save...")) customSaveMethod(false, false, true);
                     }
 
                     ImGui.Separator();
@@ -212,6 +212,15 @@ namespace NST
                         else if (!fromLevelEditor && ImGui.MenuItem("Extract all files"))
                         {
                             ExtractAllFiles(Archive.Files, true);
+                        }
+                        if (ImGui.MenuItem("Update level name"))
+                        {
+                            string previousName = Archive.FindPackageFile()!.GetName(false).Replace("_pkg", "");
+                            string newName = Archive.GetName(false).Trim().Replace(" ", "_");
+                            LevelBuilder.RenameLevel(FileManager, Archive, newName);
+                            ModalRenderer.ShowMessageModal("Success", $"Level name changed from {previousName} to {newName}");
+                            _treeView = new IgArchiveTreeView(this);
+                            IsUpdated = true;
                         }
                         ImGui.Separator();
                         AudioPlayer.RenderAudioMenu();
@@ -763,19 +772,27 @@ namespace NST
                 }
             }
 
-            if (saveAs || ForceSaveAs || string.IsNullOrEmpty(path))
+            saveAs |= ForceSaveAs | string.IsNullOrEmpty(path);
+
+            if (saveAs || compress)
             {
                 path = FileExplorer.SaveFile(FileExplorer.EXT_ARCHIVES, Archive.GetName());
-                if (path == null) return;
-                _hasBackup = File.Exists(path + ".backup");
-                LocalStorage.AddRecentFile(path, IsLevelArchive);
-                ForceSaveAs = false;
+
+                if (path == null) 
+                    return;
+                    
+                if (saveAs)
+                {
+                    _hasBackup = File.Exists(path + ".backup");
+                    LocalStorage.AddRecentFile(path, IsLevelArchive);
+                    ForceSaveAs = false;
+                }
             }
 
             ModalRenderer.ShowLoadingModal($"Saving{(compress ? " compressed " : " ")}archive...");
             int counter = 0;
 
-            Task.Run(() =>
+            CrashHandler.TryRunTask("saving archive", () =>
             {
                 List<CollisionUpdateInfos> updatedCollisions = [];
 
@@ -841,7 +858,7 @@ namespace NST
                 }
 
                 // Save archive
-                Archive.SafeSave(path, true, compress);
+                Archive.SafeSave(path, saveAs, compress);
                 IsUpdated = false;
 
                 postSaveCallback?.Invoke();
@@ -852,20 +869,8 @@ namespace NST
                 {
                     Archive.TryRunLevel();
                 }
-            })
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
-                {
-                    foreach (var ex in t.Exception.InnerExceptions)
-                    {
-                        CrashHandler.Log($"Error saving archive: {ex.Message}\n{ex.StackTrace}");
-                    }
-                    string logPath = CrashHandler.WriteLogsToFile();
-                    ModalRenderer.ShowMessageModal("Error", $"An error occured while saving the archive. Log saved to:\n\n{logPath}");
-                }
-                postSaveCallback?.Invoke();
-            }, TaskContinuationOptions.OnlyOnFaulted);
+            }, 
+            postSaveCallback);
         }
 
         /// <summary>
