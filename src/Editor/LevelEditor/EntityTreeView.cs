@@ -88,7 +88,12 @@ namespace NST
             }
         }
 
-        public void RebuildTree(List<NSTObject> objects)
+        public override void RebuildTree()
+        {
+            RebuildTree(Explorer.InstanceManager.AllObjects);
+        }
+
+        private void RebuildTree(List<NSTObject> objects)
         {
             Dictionary<string, List<NSTObject>> types = [];
             Dictionary<string, uint> colors = [];
@@ -392,7 +397,7 @@ namespace NST
                 ImGui.PushStyleColor(ImGuiCol.Text, Object is NSTEntity e ? e.Color.ToImGuiColor() : Object.GetObject().GetType().GetUniqueColor());
                 ImGui.Text("\uEA1E");
                 ImGui.PopStyleColor();
-                ImGui.SameLine(0, 5);
+                ImGui.SameLine(0, 5 * SilkWindow.instance.scale);
             }
 
             if (Color != null) ImGui.PushStyleColor(ImGuiCol.Text, Color.Value);

@@ -50,7 +50,7 @@ namespace NST
         public static void Prefix(string text, float width = 0)
         {
             ImGui.Text(text);
-            ImGui.SameLine(width);
+            ImGui.SameLine(width * SilkWindow.instance.scale);
         }
 
         /// <summary>
@@ -134,7 +134,7 @@ namespace NST
             return nodePosY >= scrollTop && nodePosY <= scrollBottom;
         }
 
-        public static void RenderComboWithSearch(string label, string preview, List<string> options, bool fullWidth, Action<int, string> callback, string? firstOption = null)
+        public static void RenderComboWithSearch(string label, string preview, List<string> options, bool fullWidth, Action<int, string> callback, string? firstOption = null, Action? renderHeaderCallback = null)
         {
             if (!_comboSearches.TryGetValue(label, out string? comboSearch))
             {
@@ -148,6 +148,8 @@ namespace NST
 
             if (ImGui.BeginCombo(label, preview))
             {
+                renderHeaderCallback?.Invoke();
+
                 ImGui.SetNextItemWidth(-1);
 
                 if (ImGui.InputTextWithHint(label, "Search...", ref comboSearch, 256))

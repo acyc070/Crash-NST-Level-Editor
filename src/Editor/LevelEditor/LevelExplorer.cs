@@ -72,6 +72,7 @@ namespace NST
             Hidden = 16,
             StaticCollision = 17,
             BorderCollision = 18,
+            HiddenTemplates = 29,
             TriggersOn = 30,
         };
 
@@ -129,7 +130,7 @@ namespace NST
             {"Hub", "hub"}
         };
         
-        public string GetWindowName() => (ArchiveRenderer?.Archive.GetName(false) ?? "Creating new level...") + "##" + GetHashCode();
+        public string GetWindowName() => (ArchiveRenderer?.Archive.GetName(false) ?? "Custom_Level") + "##" + GetHashCode();
         public bool IsLayerActive(string name) => _layers[name];
 
         /// <summary>
@@ -318,23 +319,22 @@ namespace NST
         {
             _zoneInfoFile = Archive.FindCustomZoneInfoFile();
 
-            if (_zoneInfoFile != null)
+            if (_zoneInfoFile == null) return;
+
+            IgzFile zoneInfoIgz = _zoneInfoFile.ToIgzFile();
+            FileManager.Add(_zoneInfoFile, zoneInfoIgz, true);
+
+            _zoneInfo = zoneInfoIgz.FindObject<CZoneInfo>();
+            _crashMode = _zoneInfo?._year == EGameYear.eGY_2017_Crash1 ? 0 : _zoneInfo?._year == EGameYear.eGY_2017_Crash3 ? 2 : 1;
+            _defaultCharacter = int.Max(0, LevelBuilder.CrashCharacters.ToList().IndexOf(_zoneInfo?._overrideCharacter ?? ""));
+
+            if (_zoneInfo != null)
             {
-                IgzFile zoneInfoIgz = _zoneInfoFile.ToIgzFile();
-                FileManager.Add(_zoneInfoFile, zoneInfoIgz, true);
-
-                _zoneInfo = zoneInfoIgz.FindObject<CZoneInfo>();
-                _crashMode = _zoneInfo?._year == EGameYear.eGY_2017_Crash1 ? 0 : _zoneInfo?._year == EGameYear.eGY_2017_Crash3 ? 2 : 1;
-                _defaultCharacter = int.Max(0, LevelBuilder.CrashCharacters.ToList().IndexOf(_zoneInfo?._overrideCharacter ?? ""));
-
-                if (_zoneInfo != null)
-                {
-                    var options = GameplayModeManager.GetSpecialZoneInfoOptions(_zoneInfo._build);
-                    if      (options.Contains("swim"))   _gameplayMode = 1;
-                    else if (options.Contains("bike"))   _gameplayMode = 2;
-                    else if (options.Contains("jetski")) _gameplayMode = 3;
-                    else if (options.Contains("plane"))  _gameplayMode = 4;
-                }
+                var options = GameplayModeManager.GetSpecialZoneInfoOptions(_zoneInfo._build);
+                if      (options.Contains("swim"))   _gameplayMode = 1;
+                else if (options.Contains("bike"))   _gameplayMode = 2;
+                else if (options.Contains("jetski")) _gameplayMode = 3;
+                else if (options.Contains("plane"))  _gameplayMode = 4;
             }
         }
 
@@ -515,11 +515,10 @@ namespace NST
                 materials.Add(materialRef, mat);
                 _cachedMaterials.Add(materialRef, mat);
 
-                NamedReference? textureRef = mat.diffuseTexture;
-                if (textureRef != null)
+                if (mat.textureReferences.TryGetValue("diffuse", out var textureRef))
                 {
                     if (!_textureToMaterials.ContainsKey(textureRef)) {
-                        _textureToMaterials.Add(textureRef, new List<NSTMaterial>());
+                        _textureToMaterials.Add(textureRef, []);
                     }
                     _textureToMaterials[textureRef].Add(mat);
                 }
@@ -569,18 +568,27 @@ namespace NST
                 entity.Model = models[modelName];
             }
 
-            // (Step 7a) Remove duplicate cloud meshes
+            // (Step 7a) Remove debug meshes
             foreach (NSTModel model in models.Values)
             {
-                if (model.Meshes.Count > 1 && model.Meshes.All(m => m.Material.type == typeof(CCloudParticleSortedMaterial)))
+                bool isCloud = true;
+
+                foreach (var mesh in model.Meshes.ToList())
+                {
+                    if (mesh.Material.type != typeof(CCloudParticleSortedMaterial))
+                    {
+                        isCloud = false;
+                    }
+                    if (mesh.Material.editorOnly)
+                    {
+                        model.Meshes.Remove(mesh);
+                    }
+                }
+
+                if (isCloud && model.Meshes.Count > 1)
                 {
                     model.Meshes.RemoveRange(1, model.Meshes.Count - 1);
                 }
-            }
-            // Remove ghost mesh from the checkpoint crate
-            if (models.TryGetValue("Crash_Crate_Checkpoint", out NSTModel? checkpointModel) && checkpointModel.Meshes.Count > 10)
-            {
-                checkpointModel.Meshes.RemoveAt(0);
             }
 
             // (Step 7b) Fix missing crate colors
@@ -673,7 +681,7 @@ namespace NST
                         THREE.Vector3 entityPosition = new THREE.Vector3();
                         entity.ObjectToWorld().Decompose(entityPosition, new THREE.Quaternion(), new THREE.Vector3());
 
-                        float distance = havokPosition.DistanceTo(entityPosition * 0.0254f);
+                        float distance = havokPosition.DistanceTo(entityPosition * StaticCollisionsUtils.HAVOK_SCALE);
                         
                         if (distance < 0.01f)
                         {
@@ -714,6 +722,11 @@ namespace NST
             {
                 spawnPoint = GetIntersectionPoint();
 
+                if (SelectionManager.Selection.FirstOrDefault()?.GetObject().ObjectName?.StartsWith("Collectible_") == true)
+                {
+                    spawnPoint.Z += 44.0f;
+                }
+
                 if (moveSelection)
                 {
                     SelectionManager.SelectionContainer.Position.Copy(spawnPoint);
@@ -725,7 +738,7 @@ namespace NST
             // Paste selection
             SelectionManager.Paste(spawnPoint, (NSTObject? newObject) =>
             {
-                _treeView.RebuildTree(InstanceManager.AllObjects);
+                _treeView.RebuildTree();
 
                 if (newObject != null)
                 {
@@ -880,8 +893,10 @@ namespace NST
 
             if (rebuildTree)
             {
-                _treeView.RebuildTree(InstanceManager.AllObjects);
+                _treeView.RebuildTree();
             }
+
+            UndoManager.AddAction(UndoManager.UndoActionType.Delete);
 
             RenderNextFrame = true;
         }
@@ -928,6 +943,11 @@ namespace NST
 
             Action onPostSave = () =>
             {
+                if (_zoneInfoFile == null)
+                {
+                    LoadZoneInfo();
+                }
+                
                 LoadCollisions(InstanceManager.AllEntities);
 
                 foreach (Action callback in postSaveCallbacks)
@@ -945,7 +965,12 @@ namespace NST
 
             if (ArchiveRenderer != null && ArchiveRenderer.IsUpdated && !ArchiveRenderer.IsOpen)
             {
-                ModalRenderer.ShowWarningModal("This archive has pending changes!", $"Are you sure you want to close {Archive.GetName()} without saving?", () => { ArchiveRenderer.IsUpdated = false; IsOpen = false; });
+                ModalRenderer.ShowModal2("This archive has pending changes!", $"Are you sure you want to close {Archive.GetName()} without saving?", () => 
+                { 
+                    ArchiveRenderer.IsUpdated = false; 
+                    IsOpen = false; 
+                });
+
                 IsOpen = true;
             }
             else
@@ -997,9 +1022,9 @@ namespace NST
 
                 if (ImGui.BeginTable("LevelEditorTable" + GetHashCode(), 3, ImGuiTableFlags.Resizable))
                 {
-                    ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, 300);
+                    ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, 300 * SilkWindow.instance.scale);
                     ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthStretch);
-                    ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, 350);
+                    ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, 350 * SilkWindow.instance.scale);
                     ImGui.TableNextColumn();
 
                     // ImGui.Text($"IsWindowFocused: {IsWindowFocused} IsSceneFocused: {IsSceneFocused} IsDragging: {_isDragging} ClickInsideScene: {_clickInsideScene}");
@@ -1192,19 +1217,17 @@ namespace NST
                     message += "- deleting objects\n";
                     message += "- editing components\n";
 
-                    ModalRenderer.ShowConfirmationModal(
-                        message,
-                        () =>
+                    ModalRenderer.ShowModal3(
+                        title: "Information", 
+                        message: message,
+                        onSafeAction: () =>
                         {
                             LocalStorage.Set("first_undo", false);
                             UndoManager.Undo();
                         },
-                        () =>
-                        {
-                            UndoManager.Undo();
-                        },
-                        "Don't show",
-                        "OK"
+                        onContinue: UndoManager.Undo,
+                        onSafeTitle: "Don't show",
+                        onContinueTitle: "OK"
                     );
                 }
                 else
@@ -1832,7 +1855,7 @@ namespace NST
                 return GetOrCreateIgzFile("Camera", out file, out igz);
             }
             
-            IgArchiveFile? existing = Archive.FindFile(path, FileSearchType.Path);
+            IgArchiveFile? existing = Archive.FindFile(NamespaceUtils.GetFileName(path));
 
             if (existing == null)
             {
@@ -1947,7 +1970,7 @@ namespace NST
 
             if (addToSelection == null) return allObjects;
 
-            _treeView.RebuildTree(InstanceManager.AllObjects);
+            _treeView.RebuildTree();
 
             NSTObject? selected = allObjects[0];
             
@@ -1974,7 +1997,7 @@ namespace NST
             SelectionManager.SelectionContainer.Position = GetIntersectionPoint(camDistance * 2);
             SelectionManager.ApplyChanges();
             
-            _treeView.RebuildTree(InstanceManager.AllObjects);
+            _treeView.RebuildTree();
         }
         
         private THREE.Vector3 GetIntersectionPoint(float maxDistance = 5000.0f)

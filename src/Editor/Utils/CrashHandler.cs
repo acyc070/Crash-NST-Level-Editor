@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace NST
 {
     public static class CrashHandler
@@ -36,12 +34,7 @@ namespace NST
 
             Directory.CreateDirectory(logDir);
             File.WriteAllText(filePath, stackTrace);
-
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = logDir,
-                UseShellExecute = true
-            });
+            FileExplorer.OpenFolderInExplorer(logDir);
         }
 
         private static string WriteLogsToFile()
@@ -81,8 +74,17 @@ namespace NST
                     {
                         Log($"Error {label}: {ex.Message}\n{ex.StackTrace}");
                     }
+
                     string logPath = WriteLogsToFile();
-                    ModalRenderer.ShowMessageModal("Error", $"An error occured while {label}\n\nLog file: {logPath}");
+                    
+                    ModalRenderer.ShowModal2(
+                        "Error", 
+                        $"An error occured while {label}\n\nLog file: {logPath}",
+                        () => FileExplorer.OpenFolderInExplorer(LocalStorage.GetStoragePath("logs")),
+                        null,
+                        "Open logs",
+                        "OK"
+                    );
                 }
             }, TaskContinuationOptions.OnlyOnFaulted);   
         }

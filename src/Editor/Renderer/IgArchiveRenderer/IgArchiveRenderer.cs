@@ -218,9 +218,16 @@ namespace NST
                             string previousName = Archive.FindPackageFile()!.GetName(false).Replace("_pkg", "");
                             string newName = Archive.GetName(false).Trim().Replace(" ", "_");
                             LevelBuilder.RenameLevel(FileManager, Archive, newName);
-                            ModalRenderer.ShowMessageModal("Success", $"Level name changed from {previousName} to {newName}");
+                            ModalRenderer.Show("Success", $"Level name changed from {previousName} to {newName}");
                             _treeView = new IgArchiveTreeView(this);
                             IsUpdated = true;
+                        }
+                        if (fromLevelEditor && ImGui.MenuItem("Export level to .gltf"))
+                        {
+                            if (App.GetLevelExplorer(this) is LevelExplorer explorer)
+                            {
+                                ModelExporter.Export(explorer);
+                            }
                         }
                         ImGui.Separator();
                         AudioPlayer.RenderAudioMenu();
@@ -271,7 +278,8 @@ namespace NST
                         {
                             if (ImGui.MenuItem("Clear auto-backup folder", LocalStorage.AutoBackupSize))
                             {
-                                ModalRenderer.ShowDeleteModal(
+                                ModalRenderer.ShowModal2(
+                                    "Warning",
                                     $"Are you sure you want to delete all automatic backups across all levels? ({LocalStorage.AutoBackupSize})\n\nFolder to remove: {LocalStorage.AutoBackupPath}", 
                                     LocalStorage.DeleteAutoBackupFolder
                                 );
@@ -312,7 +320,7 @@ namespace NST
             {
                 if (ForceSaveAs)
                 {
-                    ModalRenderer.ShowMessageModal("Warning", "You need to save the level first");
+                    ModalRenderer.Show("Warning", "You need to save the level first");
                 }
                 else
                 {
@@ -326,7 +334,7 @@ namespace NST
         {
             if (ForceSaveAs)
             {
-                ModalRenderer.ShowMessageModal("Warning", "You need to save the level first");
+                ModalRenderer.Show("Warning", "You need to save the level first");
             }
             else
             {
@@ -337,7 +345,7 @@ namespace NST
 
         private void DeleteBackup()
         {
-            ModalRenderer.ShowDeleteModal("Are you sure you want to delete the archive's backup?", () =>
+            ModalRenderer.ShowModal2("Warning", "Are you sure you want to delete the archive's backup?", () =>
             {
                 File.Delete(Archive.Path + ".backup");
                 _hasBackup = false;
@@ -346,7 +354,7 @@ namespace NST
 
         private void OverwriteBackup()
         {
-            ModalRenderer.ShowDeleteModal("Are you sure you want to overwrite the archive's backup?", () =>
+            ModalRenderer.ShowModal2("Warning", "Are you sure you want to overwrite the archive's backup?", () =>
             {
                 File.Delete(Archive.Path + ".backup");
                 File.Copy(Archive.Path, Archive.Path + ".backup");
@@ -359,7 +367,7 @@ namespace NST
 
             if (IsUpdated)
             {
-                ModalRenderer.ShowDeleteModal("You have unsaved changes. Restore backup?", () => RestoreBackup(fromLevelEditor, backupPath));
+                ModalRenderer.ShowModal2("Warning", "You have unsaved changes. Restore backup?", () => RestoreBackup(fromLevelEditor, backupPath));
             }
             else
             {
@@ -378,7 +386,7 @@ namespace NST
 
             if (!fromLevelEditor)
             {
-                ModalRenderer.ShowMessageModal("Operation successful", "Backup has been restored.");
+                ModalRenderer.Show("Operation successful", "Backup has been restored.");
             }
         }
 
@@ -386,11 +394,11 @@ namespace NST
         {
             if (ForceSaveAs)
             {
-                ModalRenderer.ShowMessageModal("Warning", "You need to save the level first");
+                ModalRenderer.Show("Warning", "You need to save the level first");
             }
             else if (IsUpdated)
             {
-                ModalRenderer.ShowWarningModal("This archive has pending changes!", $"Are you sure you want to reload {Archive.GetName()} without saving?", () => Reload(fromLevelEditor));
+                ModalRenderer.ShowModal2("This archive has pending changes!", $"Are you sure you want to reload {Archive.GetName()} without saving?", () => Reload(fromLevelEditor));
             }
             else
             {
@@ -522,6 +530,11 @@ namespace NST
 
             if (entity.CollisionShapeIndex == -1 && shapeInstance == null) return;
 
+            if (shapeInstance != null)
+            {
+                entity.CollisionShapeIndex = int.MaxValue;
+            }
+
             if (infos.updatedCollisions.TryGetValue(entity, out CollisionUpdateInfos? collisionInfos))
             {
                 collisionInfos.removed |= removed;
@@ -594,7 +607,7 @@ namespace NST
             catch (Exception e)
             {
                 Console.WriteLine(e);
-                ModalRenderer.ShowMessageModal("Warning", $"An error occured while opening {node.File.GetName()}:\n\n{e.Message}");
+                ModalRenderer.Show("Warning", $"An error occured while opening {node.File.GetName()}:\n\n{e.Message}");
             }
         }
         
@@ -689,7 +702,12 @@ namespace NST
         {
             if (!App.CanCloseArchive(this))
             {
-                ModalRenderer.ShowWarningModal("This archive has pending changes!", $"Are you sure you want to close {Archive.GetName()} without saving?", () => { IsUpdated = false; IsOpen = false; });
+                ModalRenderer.ShowModal2("This archive has pending changes!", $"Are you sure you want to close {Archive.GetName()} without saving?", () => 
+                { 
+                    IsUpdated = false;
+                    IsOpen = false; 
+                });
+
                 IsOpen = true;
                 return false;
             }
@@ -727,12 +745,15 @@ namespace NST
             // Check if overwriting a game file
             if (!_hasBackup && Archive.FindCustomZoneInfoFile() == null && LocalStorage.GamePath != null && Archive.Path.StartsWith(LocalStorage.GamePath))
             {
-                ModalRenderer.ShowConfirmationModal(
-                    fromLevelEditor
+                ModalRenderer.ShowModal3(
+                    title: "Warning",
+                    message: fromLevelEditor
                         ? "Warning: you're about to overwrite a game file!\n\nThe recommended approach is to create a copy of the original level\n(Save as...)."
                         : "Warning: you're about to overwrite a game file!\n\nThe recommended approach is to copy the files you want to edit to a new archive (mod), then use the mod manager to apply them.",
-                    () =>  SaveArchive(true, launchGame, compress, preSaveCallback, postSaveCallback), // Save as...
-                    () =>  SaveArchive(false, launchGame, compress, preSaveCallback, postSaveCallback) // Overwrite
+                    onSafeAction: () => SaveArchive(true, launchGame, compress, preSaveCallback, postSaveCallback), // Save as...
+                    onContinue: () => SaveArchive(false, launchGame, compress, preSaveCallback, postSaveCallback), // Overwrite
+                    onSafeTitle: "Save as...",
+                    onContinueTitle: "Overwrite"
                 );
             }
             else
@@ -751,7 +772,7 @@ namespace NST
 
             if (!string.IsNullOrEmpty(path) && LocalStorage.IsFileLocked(path))
             {
-                ModalRenderer.ShowMessageModal("Could not save the archive", "This file is currently being used by the game.");
+                ModalRenderer.Show("Could not save the archive", "This file is currently being used by the game.");
                 return;
             }
 
@@ -766,7 +787,13 @@ namespace NST
                 {
                     if (obj.ObjectName != null && !objectNames.Add(obj.ObjectName))
                     {
-                        ModalRenderer.ShowMessageModal("Could not save the archive", $"Found duplicate object name: {obj.ObjectName}\nin {archiveFile.Path}");
+                        ModalRenderer.ShowModal2(
+                            "Could not save the archive", 
+                            $"Found duplicate object name in {archiveFile.GetName()}.\n\nObject: {obj.ObjectName}",
+                            () => App.FocusObject(obj.ToNamedReference(archiveFile.GetName(false)), parentArchive: this),
+                            "Cancel", 
+                            "Focus object"
+                        );
                         return;
                     }
                 }
@@ -774,7 +801,7 @@ namespace NST
 
             saveAs |= ForceSaveAs | string.IsNullOrEmpty(path);
 
-            if (saveAs || compress)
+            if (saveAs || (compress && !ImGui.IsKeyDown(ImGuiKey.LeftShift)))
             {
                 path = FileExplorer.SaveFile(FileExplorer.EXT_ARCHIVES, Archive.GetName());
 
@@ -892,7 +919,7 @@ namespace NST
         {
             if (FileManager.IsFileUpdated(file))
             {
-                ModalRenderer.ShowMessageModal("Invalid operation", "Cannot rename this file because it currently has pending changes.");
+                ModalRenderer.Show("Invalid operation", "Cannot rename this file because it currently has pending changes.");
                 return;
             }
 
@@ -1009,7 +1036,7 @@ namespace NST
                 }
                 else if (!fileName.EndsWith(".igz") && !fileName.EndsWith(".lng"))
                 {
-                    ModalRenderer.ShowMessageModal("Error", "Invalid extension: ." + fileName.Split('.')[1]);
+                    ModalRenderer.Show("Error", "Invalid extension: ." + fileName.Split('.')[1]);
                     return;
                 }
                 
@@ -1047,6 +1074,28 @@ namespace NST
             if (ImGui.Selectable("Duplicate")) DuplicateFile(file);
             if (ImGui.Selectable("Extract"))   ExtractFile(file);
             if (ImGui.Selectable("Delete"))    RemoveFile(file);
+        }
+
+        public void RenderOpenModel(string? modelPath, IgzRenderer? lastRenderer = null)
+        {
+            if (string.IsNullOrEmpty(modelPath)) return;
+
+            string modelName = NamespaceUtils.GetFileName(modelPath, false) + ".igz";
+
+            if (ImGui.Button($"Open model file", new Vector2(-1, 0)))
+            {
+                IgArchiveFile? modelFile = Archive.FindFile(modelName);
+                IgArchiveTreeNode? fileNode = modelFile == null ? null : TreeView.FindNode(modelFile);
+                if (fileNode != null)
+                {
+                    App.OpenArchiveRenderer(this);
+                    FocusNode(fileNode, lastRenderer: lastRenderer);
+                }
+                else
+                {
+                    ModalRenderer.Show("Error", "Model file not found.");
+                }
+            }
         }
 
         private static readonly HashSet<string> _jetpackExternalDependencies = new()

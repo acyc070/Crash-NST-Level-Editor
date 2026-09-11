@@ -21,6 +21,8 @@ namespace NST
 
         public static void Render()
         {
+            float width = 100 * SilkWindow.instance.scale;
+
             if (!_newLevelOpen)
             {
                 ImGui.SeparatorText("Level Editor    ");
@@ -31,7 +33,7 @@ namespace NST
                 ImGui.SetItemTooltip("Create, edit and play custom levels (.pak):\n\n- New Level: Create a new level from scratch or based on an existing level\n- Open Level Editor: Open an existing level using the level editor\n- Play Custom Level: Launch the game and load the selected level");
                 ImGuiUtils.VerticalSpacing(10);
 
-                System.Numerics.Vector2 size = new System.Numerics.Vector2(200, 0);
+                System.Numerics.Vector2 size = new System.Numerics.Vector2(width * 2, 0);
 
                 if (ImGuiUtils.CenteredButton("New Level...", size))
                 {
@@ -50,7 +52,7 @@ namespace NST
                     }
                     catch (Exception e)
                     {
-                        ModalRenderer.ShowMessageModal("Error", e.Message);
+                        ModalRenderer.Show("Error", e.Message);
                     }
                 }
                 
@@ -78,7 +80,7 @@ namespace NST
                 ImGuiUtils.VerticalSpacing(10);
 
                 ImGui.Text("Base Level:");
-                ImGui.SameLine(100);
+                ImGui.SameLine(width);
                 if (ImGui.Combo("##SelectedBaseLevel", ref _selectedLevel, _baseLevels, _baseLevels.Length))
                 {
                     if (_selectedLevel != 0)
@@ -97,24 +99,24 @@ namespace NST
                 if (_selectedLevel != 0) ImGui.BeginDisabled();
 
                 ImGui.Text("Lighting:");
-                ImGui.SameLine(100);
+                ImGui.SameLine(width);
                 ImGui.Combo("##SelectedLighting", ref _selectedLighting, _levels, _levels.Length);
                 ImGui.SameLine(); ImGui.TextDisabled("(?)");
                 ImGui.SetItemTooltip("These options are only available if the base level is set to \"none\".");
 
                 ImGui.Text("Music:");
-                ImGui.SameLine(100);
+                ImGui.SameLine(width);
                 ImGui.Combo("##SelectedMusic", ref _selectedMusic, _musicLevels, _musicLevels.Length);
 
                 ImGui.Text("Mode:");
-                ImGui.SameLine(100);
+                ImGui.SameLine(width);
                 ImGui.Combo("##SelectedMode", ref _currentMode, CrashModes, CrashModes.Length);
 
                 if (_selectedLevel != 0) ImGui.EndDisabled();
 
                 ImGui.Spacing();
-                ImGui.SameLine(100);
-                if (ImGui.Button("Cancel", new System.Numerics.Vector2(90, 0)))
+                ImGui.SameLine(width);
+                if (ImGui.Button("Cancel", new System.Numerics.Vector2(width * 0.9f, 0)))
                 {
                     _newLevelOpen = false;
                 }
@@ -336,21 +338,13 @@ namespace NST
 
             // CWorldEntity
 
-            var components = worldEntity.GetComponentsDictionary();
-
-            foreach ((string key, igComponentData component) in components)
+            foreach ((string key, igComponentData component) in worldEntity.GetComponentsDictionary())
             {
                 if (component is DDA_CheckpointData checkpointData)
                 {
                     checkpointData._Entity_0x50.Reference = null;
                 }
-                else if (component is common_Level_ManagerData levelManager)
-                {
-                    levelManager._spawnEntity.Reference = null;
-                    levelManager._Entity_0x48.Reference = null; // dark lighting
-                    levelManager._E_Zone_Collectible_Type = EZoneCollectibleType.eZCT_Gem_Clear;
-                }
-                else if (component is not global_WorldInstance_Enviromental_VFXData)
+                else if (component is not common_Level_ManagerData && component is not global_WorldInstance_Enviromental_VFXData)
                 {
                     worldEntity.RemoveComponent(key);
                 }
@@ -358,17 +352,21 @@ namespace NST
 
             // common_Level_ManagerData
 
-            if (!components.Values.Any(c => c is common_Level_ManagerData))
+            if (!worldEntity.TryGetComponent(out common_Level_ManagerData? levelManager))
             {
                 string baseLevel = crashMode == 0 ? "L101_NSanityBeach" : crashMode == 1 ? "L201_TurtleWoods" : "L301_ToadVillage";
                 IgArchive baseArchive = IgArchive.Open(Path.Combine(LocalStorage.ArchivePath, $"{baseLevel}.pak"));
                 IgArchiveFile baseFile = baseArchive.FindFile($"{baseLevel}.igz")!;
                 IgzFile baseIgz = baseFile.ToIgzFile();
 
-                var levelManager = baseIgz.FindObject<common_Level_ManagerData>()!;
-                
+                levelManager = baseIgz.FindObject<common_Level_ManagerData>()!;
+
                 worldEntity.AddComponent("instance_Scripts.Graph.common_Level_ManagerData", levelManager);
             }
+
+            levelManager._spawnEntity.Reference = null;
+            levelManager._Entity_0x48.Reference = null; // dark lighting
+            levelManager._E_Zone_Collectible_Type = EZoneCollectibleType.eZCT_Gem_Clear;
 
             (worldEntity._entityData as CWorldEntityData)!._startingGameplayMode = EWorldGameplayMode.eWGM_Traditional;
             (worldEntity._entityData as CWorldEntityData)!._worldEntityFlags = 0; // 0x8 = cutscene camera (l101) => black screen if not handled
