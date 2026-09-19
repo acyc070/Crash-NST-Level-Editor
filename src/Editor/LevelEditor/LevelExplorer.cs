@@ -106,8 +106,9 @@ namespace NST
         private bool _isDragging = false;
         private bool _clickedInsideScene = false;
         private bool _shouldOpenContextMenu = false;
-        private static int _maxTextureSize = 512;
+        private string? _lastGizmoSpace = null;
 
+        private static int _maxTextureSize = 512;
         private float _gizmoTranslationSnap = 80;
         private float _gizmoRotationSnap = 45;
 
@@ -568,7 +569,7 @@ namespace NST
                 entity.Model = models[modelName];
             }
 
-            // (Step 7a) Remove debug meshes
+            // Step 7: Remove debug meshes
             foreach (NSTModel model in models.Values)
             {
                 bool isCloud = true;
@@ -588,31 +589,6 @@ namespace NST
                 if (isCloud && model.Meshes.Count > 1)
                 {
                     model.Meshes.RemoveRange(1, model.Meshes.Count - 1);
-                }
-            }
-
-            // (Step 7b) Fix missing crate colors
-            Dictionary<NamedReference, THREE.Vector4> _colorOverrides = new()
-            {
-                // NST
-                { new NamedReference("Crash_Crates_materials,TNTCrate,0000100", "GrayWood"), new THREE.Vector4(.8f, .2f, .1f, 1) },
-                { new NamedReference("Crash_Crates_materials,BossRipperRoo_BigTNT,0004008", "newwood"), new THREE.Vector4(.8f, .2f, .1f, 1) },
-                { new NamedReference("Crash_Crates_materials,Crash_Crate_Nitro,0000210", "GrayWood01E"), new THREE.Vector4(.15f, .9f, .15f, 1) },
-                { new NamedReference("Crash_Crates_materials,Crash_Crate_TimerOne,00c0100", "GrayWood"), new THREE.Vector4(.9f, .9f, .1f, 1) },
-                { new NamedReference("Crash_Crates_materials,Crash_Crate_TimerTwo,0240100", "GrayWood"), new THREE.Vector4(.9f, .9f, .1f, 1) },
-                { new NamedReference("Crash_Crates_materials,Crash_Crate_TimerThree,0140100", "GrayWood"), new THREE.Vector4(.9f, .9f, .1f, 1) },
-                // CTR
-                { new NamedReference("Crash_Crates_materials,Octane_Skin_TimeCrate_01,00180000", "TimeCrate"), new THREE.Vector4(.78f, .72f, .1f, 1) },
-                { new NamedReference("Crash_Crates_materials,Octane_Skin_TimeCrate_02,00480000", "TimeCrate"), new THREE.Vector4(.78f, .72f, .1f, 1) },
-                { new NamedReference("Crash_Crates_materials,Octane_Skin_TimeCrate_03,00280000", "TimeCrate"), new THREE.Vector4(.78f, .72f, .1f, 1) },
-                { new NamedReference("Crash_Crates_materials,Octane_NitroCrate,00000210", "GrayWood01E"), new THREE.Vector4(.15f, .7f, .15f, 1) },
-            };
-
-            foreach ((NamedReference matRef, THREE.Vector4 colorOverride) in _colorOverrides)
-            {
-                if (materials.TryGetValue(matRef, out NSTMaterial? mat))
-                {
-                    mat.color = colorOverride;
                 }
             }
         }
@@ -1195,21 +1171,27 @@ namespace NST
             }
             else if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.E))
             {
+                if (_lastGizmoSpace != null) _gizmos.space = _lastGizmoSpace;
+                _lastGizmoSpace = null;
                 _gizmos.mode = "translate";
                 RenderNextFrame = true;
             }
             else if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.R))
             {
+                if (_lastGizmoSpace != null) _gizmos.space = _lastGizmoSpace;
+                _lastGizmoSpace = null;
                 _gizmos.mode = "rotate";
                 RenderNextFrame = true;
             }
             else if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.T))
             {
+                _lastGizmoSpace = _gizmos.space;
                 _gizmos.mode = "scale";
                 RenderNextFrame = true;
             }
             else if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.G))
             {
+                _lastGizmoSpace = null;
                 _gizmos.space = _gizmos.space == "world" ? "local" : "world";
                 RenderNextFrame = true;
             }
