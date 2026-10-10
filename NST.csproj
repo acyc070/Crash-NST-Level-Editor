@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -30,6 +30,10 @@
       <PackageReference Include="SkiaSharp" Version="2.88.8" />
       <PackageReference Include="NAudio" Version="2.2.1" />
       <PackageReference Include="NAudio.Lame" Version="2.1.0" />
+
+      <!-- New audio codec dependencies -->
+      <PackageReference Include="Concentus" Version="2.2.2" />       <!-- Opus codec support -->
+      <PackageReference Include="OggVorbisEncoder" Version="1.2.2" />  <!-- Vorbis codec support -->
 
       <Compile Remove="lib\**\*.cs" />
       <ProjectReference Include="lib\THREE\THREE.csproj" />
