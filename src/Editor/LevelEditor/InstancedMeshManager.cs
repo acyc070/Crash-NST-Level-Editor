@@ -84,6 +84,9 @@ namespace NST
 
         private THREE.Group CreateInstancedGroup(LevelExplorer.DebugMode debugMode)
         {
+            if (debugMode == LevelExplorer.DebugMode.HavokSections || debugMode == LevelExplorer.DebugMode.HavokMaterials)
+                return new THREE.Group();
+            
             var instances = _entities.Where(e => !e.IsSelected || SelectionMode);
 
             THREE.Color highlightColor = new THREE.Color(0xff5141);
@@ -772,6 +775,8 @@ namespace NST
                     }
                 }
             }
+
+            _explorer.RenderNextFrame = true;
         }
 
         /// <summary>
@@ -811,6 +816,8 @@ namespace NST
                     }
                 }
             }
+
+            _explorer.RenderNextFrame = true;
         }
 
         /// <summary>
@@ -821,32 +828,52 @@ namespace NST
         /// <param name="applyTransform">Whether to transform the resulting shape to world space using the entity's transform</param>
         private void CreateCollisionShape(NSTEntity entity, hknpShape? shape, bool applyTransform = true)
         {
+            entity.CollisionObject?.Parent.Remove(entity.CollisionObject);
+            entity.CollisionObject = null;
+
             if (shape == null) return;
+
+            bool debugMode = 
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections |
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials;
+
+            bool editMode = _explorer.SelectionBox.CollisionMode;
+
+            bool vertexColors = editMode | debugMode;
 
             THREE.Material mat = new THREE.MeshBasicMaterial() 
             {
-                Color = new THREE.Color(1, 0, 0),
+                VertexColors = vertexColors,
+                Color = vertexColors ? null : new THREE.Color(1, 0, 0),
                 Side = THREE.Constants.DoubleSide,
-                PolygonOffset = true,
-                PolygonOffsetFactor = -10,
-                PolygonOffsetUnits = 0.1f,
-                Transparent = true,
-                Opacity = 0.25f,
             };
             THREE.Material matWire = new THREE.MeshBasicMaterial()
             {
                 Color = new THREE.Color(1, 0, 0),
                 Side = THREE.Constants.DoubleSide,
-                PolygonOffset = true,
-                PolygonOffsetFactor = -10,
-                PolygonOffsetUnits = 0.1f,
                 Wireframe = true,
+                WireframeLineWidth = LevelExplorer.WireframeLineWidth,
             };
-            const float havokScale = 39.37f;
+
+            if (!debugMode)
+            {
+                mat.Opacity = 0.5f;
+                mat.Transparent = true;
+                mat.PolygonOffset = true;
+                mat.PolygonOffsetFactor = -10.0f;
+                mat.PolygonOffsetUnits = 0.1f;
+
+                matWire.PolygonOffset = true;
+                matWire.PolygonOffsetFactor = -10.0f;
+                matWire.PolygonOffsetUnits = 0.1f;
+            }
 
             var geometry = new THREE.BufferGeometry();
             List<THREE.Vector3> positions = [];
             List<int> indices = [];
+
+            List<THREE.Color> debugColors = [];
+            var rng = new Random();
 
             if (shape is hknpSphereShape sphereShape)
             {
@@ -854,11 +881,14 @@ namespace NST
             }
             else if (shape is hknpConvexPolytopeShape polytopeShape)
             {
-                foreach (var vertex in polytopeShape._vertices.GetElements())
+                if (editMode | debugMode) return;
+
+                foreach (var vertex in polytopeShape._vertices)
                 {
-                    positions.Add(new THREE.Vector3(vertex.X, vertex.Y, vertex.Z) * havokScale);
+                    positions.Add(new THREE.Vector3(vertex.X, vertex.Y, vertex.Z) * StaticCollisionsUtils.HAVOK_SCALE_INV);
                 }
-                foreach (var face in polytopeShape._faces.GetElements())
+
+                foreach (var face in polytopeShape._faces)
                 {
                     for (int i = 0; i < face._numIndices - 2; i++)
                     {
@@ -873,26 +903,30 @@ namespace NST
                 var tree = compressedShape._data?._meshTree;
                 if (tree == null) return;
 
+                CollisionUpdateInfos? infos = null;
+                _explorer.FileManager.GetInfos(entity.ArchiveFile)?.updatedCollisions.TryGetValue(entity, out infos);
+
                 List<(uint, uint, uint)> vertices = [];
                 List<THREE.Vector3> sharedVertices = [];
 
-                foreach (var v in tree._packedVertices.GetElements())
+                foreach (var v in tree._packedVertices)
                 {
-                    vertices.Add(UnpackXYZ(v, 11, 11, 10));
+                    vertices.Add(HavokCollisionsBuilder.UnpackXYZ(v, 11, 11, 10));
                 }
-                foreach (var v in tree._sharedVertices.GetElements())
+                foreach (var v in tree._sharedVertices)
                 {
-                    var (x, y, z) = UnpackXYZ(v, 21, 21, 22);
+                    var (x, y, z) = HavokCollisionsBuilder.UnpackXYZ(v, 21, 21, 22);
                     sharedVertices.Add(new THREE.Vector3(x / 2097151f, y / 2097151f, z / 4194303f));
                 }
 
                 int primitiveStart = 0;
                 int sharedIndexStart = 0;
 
-                foreach (var section in tree._sections.GetElements())
+                foreach (var section in tree._sections)
                 {
                     int firstVertex = (int)section._firstPackedVertex;
                     int primitiveCount = (int)(section._primitives & 0xFF);
+                    int dataRunStart = (int)(section._dataRuns >> 8);
                     int numPackedVertices = section._numPackedVertices;
                     int numSharedIndices = section._numSharedIndices;
 
@@ -908,7 +942,7 @@ namespace NST
                             float y = tree._min.Y + (tree._max.Y - tree._min.Y) * vertex.Y;
                             float z = tree._min.Z + (tree._max.Z - tree._min.Z) * vertex.Z;
 
-                            return new THREE.Vector3(x, y, z) * havokScale;
+                            return new THREE.Vector3(x, y, z) * StaticCollisionsUtils.HAVOK_SCALE_INV;
                         }
                         else
                         {
@@ -918,9 +952,14 @@ namespace NST
                             float y = section._codecParms_1 + section._codecParms_4 * uy;
                             float z = section._codecParms_2 + section._codecParms_5 * uz;
 
-                            return new THREE.Vector3(x, y, z) * havokScale;
+                            return new THREE.Vector3(x, y, z) * StaticCollisionsUtils.HAVOK_SCALE_INV;
                         }
                     };
+
+                    int dataRun = dataRunStart;
+                    int dataRunPrimitive = 0;
+
+                    var col = new THREE.Color(rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f);
 
                     for (int i = 0; i < primitiveCount; i++)
                     {
@@ -934,13 +973,42 @@ namespace NST
                             var c = GetVertex(primitive._indices_2);
                             var d = GetVertex(primitive._indices_3);
 
-                            positions.AddRange([
-                                a, b, c, d 
-                            ]);
-                            indices.AddRange([
+                            bool deleted = false;
+
+                            if (infos != null)
+                            {
+                                int faceIndex = primitiveStart + i;
+                                deleted |= infos.removedFaces.Contains(faceIndex*2) || infos.removedFaces.Contains(faceIndex*2+1);
+                            }
+
+                            if (deleted) 
+                                positions.AddRange(a, a, a, a);
+                            else
+                                positions.AddRange(a, b, c, d);
+
+                            indices.AddRange(
                                 startId, startId + 1, startId + 2, 
                                 startId, startId + 2, startId + 3
-                            ]);
+                            );
+
+                            if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections)
+                            {
+                                debugColors.AddRange(col, col, col, col);
+                            }
+                            else if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials)
+                            {
+                                int material = tree._primitiveDataRuns[dataRun]._value?._data ?? 0;
+
+                                if (++dataRunPrimitive >= tree._primitiveDataRuns[dataRun]._count)
+                                {
+                                    dataRunPrimitive = 0;
+                                    dataRun++;
+                                }
+
+                                rng = new Random(material + 1234);
+                                col = new THREE.Color(rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f);
+                                debugColors.AddRange(col, col, col, col);
+                            }
                         }
                         catch (Exception e)
                         {
@@ -958,6 +1026,24 @@ namespace NST
                 return;
             }
             
+            if (debugColors.Count > 0)
+            {
+                geometry.SetAttribute("color", new THREE.BufferAttribute<float>(debugColors.SelectMany(c => new[]{c.R, c.G, c.B}).ToArray(), 3));
+            }
+            else if (vertexColors)
+            {
+                float[] colorBuffer = new float[positions.Count*3];
+
+                for (int i = 0; i < positions.Count; i++)
+                {
+                    colorBuffer[i*3]   = 1;
+                    colorBuffer[i*3+1] = 0;
+                    colorBuffer[i*3+2] = 0;
+                }
+
+                geometry.SetAttribute("color", new THREE.BufferAttribute<float>(colorBuffer, 3));
+            }
+
             float[] posBuffer = positions.SelectMany(e => new float[] { e.X, e.Y, e.Z }).ToArray();
             geometry.SetAttribute("position", new THREE.BufferAttribute<float>(posBuffer, 3));
             geometry.SetIndex(indices);
@@ -966,34 +1052,30 @@ namespace NST
             THREE.Mesh meshWire = new THREE.Mesh(geometry, matWire);
             THREE.Group group = new THREE.Group() { mesh, meshWire };
 
-            entity.CollisionObject?.Parent.Remove(entity.CollisionObject);
             entity.CollisionObject = group;
 
             if (applyTransform)
             {
                 group.ApplyMatrix4(entity.ObjectToWorld());
             }
-            else
-            {
-                group.UserData["BorderCollision"] = true;
-            }
 
-            group.Traverse(e => e.UserData["entity"] = entity);
+            group.Traverse(e =>
+            {
+                e.UserData["entity"] = entity;
+                e.UserData["collision"] = true;
+
+                if (applyTransform)
+                {
+                    e.Layers.Set((int)LevelExplorer.CameraLayer.StaticCollision);
+                }
+                else
+                {
+                    group.UserData["BorderCollision"] = true;
+                    e.Layers.Set((int)LevelExplorer.CameraLayer.BorderCollision);
+                }
+            });
 
             RootObject.Add(group);
-        }
-        
-        private static (uint x, uint y, uint z) UnpackXYZ(u64 packed, int xBits, int yBits, int zBits)
-        {
-            uint xMask = (1u << xBits) - 1;
-            uint yMask = (1u << yBits) - 1;
-            uint zMask = (1u << zBits) - 1;
-
-            uint x = (uint)(packed & xMask);
-            uint y = (uint)((packed >> xBits) & yMask);
-            uint z = (uint)((packed >> (xBits + yBits)) & zMask);
-
-            return (x, y, z);
         }
     }
 }
