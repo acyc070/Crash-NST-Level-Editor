@@ -84,7 +84,7 @@ namespace NST
 
         private THREE.Group CreateInstancedGroup(LevelExplorer.DebugMode debugMode)
         {
-            if (debugMode == LevelExplorer.DebugMode.HavokSections || debugMode == LevelExplorer.DebugMode.HavokMaterials)
+            if (debugMode == LevelExplorer.DebugMode.HavokSections || debugMode == LevelExplorer.DebugMode.HavokMaterials || debugMode == LevelExplorer.DebugMode.HavokPrimitives)
                 return new THREE.Group();
             
             var instances = _entities.Where(e => !e.IsSelected || SelectionMode);
@@ -378,6 +378,10 @@ namespace NST
             {
                 return Select((NSTSplineMarker)splineMarkerObj);
             }
+            else if (hit.object3D.UserData.TryGetValue("splineVelocity", out object? splineVelocityObj))
+            {
+                return Select((NSTSplineVelocityKeyFrame)splineVelocityObj);
+            }
             else if (hit.object3D.UserData.TryGetValue("waypoint", out object? waypointObj))
             {
                 return Select((NSTWaypoint)waypointObj);
@@ -431,11 +435,14 @@ namespace NST
                     return [];
                 }
 
-                if (entity.IsPrefabChild && entity.ParentPrefabInstance?.Children.Count(e => e is NSTEntity entity && entity.IsPrefabChild) <= 50)
+                if (entity.IsPrefabChild && entity.ParentPrefabInstance != null)
                 {
                     bool triggerPassThrough = !selectionEmpty && selection.All(e => e.Object is CScriptTriggerEntity && e.IsPrefabChild);
+                    bool fullySelected = !selectionEmpty && selection.All(e => e == entity.ParentPrefabInstance || e.ParentPrefabInstance == entity.ParentPrefabInstance);
+                    bool tooManyChildren = entity.ParentPrefabInstance.Children.Count(e => e is NSTEntity entity && entity.IsPrefabChild) > 50;
+                    bool isUnique = entity.PrefabTemplate?.PrefabTemplateInstances.Count <= 1;
 
-                    if (fromTree || (shiftPressed && selectionEmpty) || (!shiftPressed && ((!selectionEmpty && selection.All(e => e == entity.ParentPrefabInstance || e.ParentPrefabInstance == entity.ParentPrefabInstance)) || triggerPassThrough)))
+                    if (fromTree || (isUnique && tooManyChildren) || (shiftPressed && selectionEmpty) || (!shiftPressed && (fullySelected || triggerPassThrough)))
                     {
                         Console.WriteLine("Select prefab child instances");
                         return SelectChildInstances(entity).Cast<NSTObject>().ToList();
@@ -834,8 +841,9 @@ namespace NST
             if (shape == null) return;
 
             bool debugMode = 
-                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections |
-                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials;
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials |
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections  |
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokPrimitives;
 
             bool editMode = _explorer.SelectionBox.CollisionMode;
 
@@ -932,27 +940,35 @@ namespace NST
 
                     var GetVertex = (int index) =>
                     {
-                        if (index >= numPackedVertices)
+                        try
                         {
-                            int localSharedIndex = index - numPackedVertices;
-                            int sharedVertexIndex = tree._sharedVerticesIndex[sharedIndexStart + localSharedIndex];
-                            THREE.Vector3 vertex = sharedVertices[sharedVertexIndex];
+                            if (index >= numPackedVertices)
+                            {
+                                int localSharedIndex = index - numPackedVertices;
+                                int sharedVertexIndex = tree._sharedVerticesIndex[sharedIndexStart + localSharedIndex];
+                                THREE.Vector3 vertex = sharedVertices[sharedVertexIndex];
 
-                            float x = tree._min.X + (tree._max.X - tree._min.X) * vertex.X;
-                            float y = tree._min.Y + (tree._max.Y - tree._min.Y) * vertex.Y;
-                            float z = tree._min.Z + (tree._max.Z - tree._min.Z) * vertex.Z;
+                                float x = tree._min.X + (tree._max.X - tree._min.X) * vertex.X;
+                                float y = tree._min.Y + (tree._max.Y - tree._min.Y) * vertex.Y;
+                                float z = tree._min.Z + (tree._max.Z - tree._min.Z) * vertex.Z;
 
-                            return new THREE.Vector3(x, y, z) * StaticCollisionsUtils.HAVOK_SCALE_INV;
+                                return new THREE.Vector3(x, y, z) * StaticCollisionsUtils.HAVOK_SCALE_INV;
+                            }
+                            else
+                            {
+                                var (ux, uy, uz) = vertices[firstVertex + index];
+
+                                float x = section._codecParms_0 + section._codecParms_3 * ux;
+                                float y = section._codecParms_1 + section._codecParms_4 * uy;
+                                float z = section._codecParms_2 + section._codecParms_5 * uz;
+
+                                return new THREE.Vector3(x, y, z) * StaticCollisionsUtils.HAVOK_SCALE_INV;
+                            }
                         }
-                        else
+                        catch (Exception)
                         {
-                            var (ux, uy, uz) = vertices[firstVertex + index];
-
-                            float x = section._codecParms_0 + section._codecParms_3 * ux;
-                            float y = section._codecParms_1 + section._codecParms_4 * uy;
-                            float z = section._codecParms_2 + section._codecParms_5 * uz;
-
-                            return new THREE.Vector3(x, y, z) * StaticCollisionsUtils.HAVOK_SCALE_INV;
+                            // Console.WriteLine(e);
+                            return THREE.Vector3.Zero();
                         }
                     };
 
@@ -963,56 +979,54 @@ namespace NST
 
                     for (int i = 0; i < primitiveCount; i++)
                     {
-                        try
+                        var primitive = tree._primitives[primitiveStart + i];
+                        int startId = positions.Count;
+
+                        var a = GetVertex(primitive._indices_0);
+                        var b = GetVertex(primitive._indices_1);
+                        var c = GetVertex(primitive._indices_2);
+                        var d = GetVertex(primitive._indices_3);
+
+                        bool deleted = false;
+
+                        if (infos != null)
                         {
-                            var primitive = tree._primitives[primitiveStart + i];
-                            int startId = positions.Count;
-
-                            var a = GetVertex(primitive._indices_0);
-                            var b = GetVertex(primitive._indices_1);
-                            var c = GetVertex(primitive._indices_2);
-                            var d = GetVertex(primitive._indices_3);
-
-                            bool deleted = false;
-
-                            if (infos != null)
-                            {
-                                int faceIndex = primitiveStart + i;
-                                deleted |= infos.removedFaces.Contains(faceIndex*2) || infos.removedFaces.Contains(faceIndex*2+1);
-                            }
-
-                            if (deleted) 
-                                positions.AddRange(a, a, a, a);
-                            else
-                                positions.AddRange(a, b, c, d);
-
-                            indices.AddRange(
-                                startId, startId + 1, startId + 2, 
-                                startId, startId + 2, startId + 3
-                            );
-
-                            if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections)
-                            {
-                                debugColors.AddRange(col, col, col, col);
-                            }
-                            else if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials)
-                            {
-                                int material = tree._primitiveDataRuns[dataRun]._value?._data ?? 0;
-
-                                if (++dataRunPrimitive >= tree._primitiveDataRuns[dataRun]._count)
-                                {
-                                    dataRunPrimitive = 0;
-                                    dataRun++;
-                                }
-
-                                rng = new Random(material + 1234);
-                                col = new THREE.Color(rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f);
-                                debugColors.AddRange(col, col, col, col);
-                            }
+                            int faceIndex = primitiveStart + i;
+                            deleted |= infos.removedFaces.Contains(faceIndex*2) || infos.removedFaces.Contains(faceIndex*2+1);
                         }
-                        catch (Exception e)
+
+                        if (deleted || HavokCollisionsBuilder.GetUniqueIndexCount(primitive) < 3) 
+                            positions.AddRange(a, a, a, a);
+                        else
+                            positions.AddRange(a, b, c, d);
+
+                        indices.AddRange(
+                            startId, startId + 1, startId + 2, 
+                            startId, startId + 2, startId + 3
+                        );
+
+                        if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections)
                         {
-                            Console.WriteLine(e);
+                            debugColors.AddRange(col, col, col, col);
+                        }
+                        else if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokPrimitives)
+                        {
+                            col = new THREE.Color(rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f);
+                            debugColors.AddRange(col, col, col, col);
+                        }
+                        else if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials)
+                        {
+                            int material = tree._primitiveDataRuns[dataRun]._value?._data ?? 0;
+
+                            if (++dataRunPrimitive >= tree._primitiveDataRuns[dataRun]._count)
+                            {
+                                dataRunPrimitive = 0;
+                                dataRun++;
+                            }
+
+                            rng = new Random(material + 1234);
+                            col = new THREE.Color(rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f);
+                            debugColors.AddRange(col, col, col, col);
                         }
                     }
 
@@ -1070,7 +1084,7 @@ namespace NST
                 }
                 else
                 {
-                    group.UserData["BorderCollision"] = true;
+                    e.UserData["BorderCollision"] = true;
                     e.Layers.Set((int)LevelExplorer.CameraLayer.BorderCollision);
                 }
             });
