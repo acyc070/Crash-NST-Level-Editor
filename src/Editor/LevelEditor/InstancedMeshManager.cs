@@ -84,7 +84,7 @@ namespace NST
 
         private THREE.Group CreateInstancedGroup(LevelExplorer.DebugMode debugMode)
         {
-            if (debugMode == LevelExplorer.DebugMode.HavokSections || debugMode == LevelExplorer.DebugMode.HavokMaterials)
+            if (debugMode == LevelExplorer.DebugMode.HavokSections || debugMode == LevelExplorer.DebugMode.HavokMaterials || debugMode == LevelExplorer.DebugMode.HavokPrimitives)
                 return new THREE.Group();
             
             var instances = _entities.Where(e => !e.IsSelected || SelectionMode);
@@ -378,6 +378,10 @@ namespace NST
             {
                 return Select((NSTSplineMarker)splineMarkerObj);
             }
+            else if (hit.object3D.UserData.TryGetValue("splineVelocity", out object? splineVelocityObj))
+            {
+                return Select((NSTSplineVelocityKeyFrame)splineVelocityObj);
+            }
             else if (hit.object3D.UserData.TryGetValue("waypoint", out object? waypointObj))
             {
                 return Select((NSTWaypoint)waypointObj);
@@ -431,11 +435,14 @@ namespace NST
                     return [];
                 }
 
-                if (entity.IsPrefabChild && entity.ParentPrefabInstance?.Children.Count(e => e is NSTEntity entity && entity.IsPrefabChild) <= 50)
+                if (entity.IsPrefabChild && entity.ParentPrefabInstance != null)
                 {
                     bool triggerPassThrough = !selectionEmpty && selection.All(e => e.Object is CScriptTriggerEntity && e.IsPrefabChild);
+                    bool fullySelected = !selectionEmpty && selection.All(e => e == entity.ParentPrefabInstance || e.ParentPrefabInstance == entity.ParentPrefabInstance);
+                    bool tooManyChildren = entity.ParentPrefabInstance.Children.Count(e => e is NSTEntity entity && entity.IsPrefabChild) > 50;
+                    bool isUnique = entity.PrefabTemplate?.PrefabTemplateInstances.Count <= 1;
 
-                    if (fromTree || (shiftPressed && selectionEmpty) || (!shiftPressed && ((!selectionEmpty && selection.All(e => e == entity.ParentPrefabInstance || e.ParentPrefabInstance == entity.ParentPrefabInstance)) || triggerPassThrough)))
+                    if (fromTree || (isUnique && tooManyChildren) || (shiftPressed && selectionEmpty) || (!shiftPressed && (fullySelected || triggerPassThrough)))
                     {
                         Console.WriteLine("Select prefab child instances");
                         return SelectChildInstances(entity).Cast<NSTObject>().ToList();
@@ -834,8 +841,9 @@ namespace NST
             if (shape == null) return;
 
             bool debugMode = 
-                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections |
-                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials;
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials |
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections  |
+                _explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokPrimitives;
 
             bool editMode = _explorer.SelectionBox.CollisionMode;
 
@@ -999,6 +1007,11 @@ namespace NST
 
                         if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokSections)
                         {
+                            debugColors.AddRange(col, col, col, col);
+                        }
+                        else if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokPrimitives)
+                        {
+                            col = new THREE.Color(rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f, rng.NextSingle()*0.5f+0.5f);
                             debugColors.AddRange(col, col, col, col);
                         }
                         else if (_explorer.DebugRenderMode == LevelExplorer.DebugMode.HavokMaterials)
